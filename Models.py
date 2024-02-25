@@ -19,7 +19,6 @@ class ResBlock(nn.Module):
         self.relu3 = nn.ReLU() if activation == "ReLU" else nn.GELU()
         self.shortcut = shortcut
 
-            
     def forward(self, x):
         Fx = self.relu1( self.bn1( self.conv_1(x) ) )
         Fx = self.relu2( self.bn2( self.conv_2(Fx) ) )
@@ -61,7 +60,7 @@ class ResNet(nn.Module):
         # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
         if zero_init_residual:
             for modl in self.modules():
-                if isinstance(modl, BasicBlock) and modl.bn2.weight is not None:
+                if isinstance(modl, ResBlock) and modl.bn2.weight is not None:
                     nn.init.constant_(modl.bn2.weight, 0)  # type: ignore[arg-type]
         ##################################################
     
@@ -105,47 +104,106 @@ class ResNet(nn.Module):
         x = self.conv_4(x)
         x = self.conv_5(x)
         x = self.avgpool(x)
+        x = torch.flatten(x, start_dim=1)  # (N,....) -> (N, E)
         return x
 
 
-def resnet18(in_channels=3, activation="ReLU"):
-    return ResNet(
-        ResBlock, 
-        layers=[2,2,2,2], 
-        activation=activation, 
-        first_conv=False, 
-        first_maxpool=False, 
-        in_channels=in_channels
-    )
+def resnet_x(depth, **kwargs):
+    resnets ={
+        18: (ResNet(ResBlock, layers=[2,2,2,2],**kwargs), 512),
+        34: (ResNet(ResBlock, layers=[3,4,6,3],**kwargs), 512),
+    }
+    assert depth in resnets.keys(), "Invalid ResNet depth"
+    return resnets[depth]
 
-def resnet34(in_channels=3, activation="ReLU"):
-    return ResNet(
-        ResBlock, 
-        layers=[3,4,6,3], 
-        activation=activation, 
-        first_conv=False, 
-        first_maxpool=False, 
-        in_channels=in_channels
-    )
 
-class Projector()
+class QProjector(nn.Module):
+    def __init__(self, in_features, hidden_features, out_features, activation="ReLU",  norm_layer=True, hidden_mlp=True):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(in_features=in_features, out_features=hidden_features),
+            nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
+            nn.ReLU() if activation == "ReLU" else nn.GELU(),
+            nn.Linear(in_features=hidden_features, out_features=out_features)
+        ) if hidden_mlp else nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features))
+        # Store values for recreation
+        local = locals()
+        del local["self"]
+        del local["__class__"]
+        self.local = local
+
+    def forward(self, x):
+        x = self.mlp(x)
+        return x
+
 
 class ResSCECLR(nn.Module):
-    def __init__(self, backbone, in_channels=3, activation="ReLU")
-        super.__init__()
-        if backbone == "resnet18":
-            self.mixer = resnet18(in_channels, activation)
-        elif backbone == "resnet34":
-            self.mixer = resnet34(in_channels, activation)
-        else: raise ValueError("Invalid backbone name")
-    
-    
+    def __init__(self,
+                 backbone_depth,
+                 in_channels=3,
+                 activation="ReLU",
+                 zero_init_residual=False,
+                 mlp_hidden_features=1024,
+                 mlp_outfeatures=128,
+                 norm_layer=True,
+                 hidden_mlp=True
+                 ):
+        super().__init__()
+        resnet, mlp_in_features = resnet_x(
+            backbone_depth,
+            in_channels=in_channels,
+            activation=activation,
+            zero_init_residual=zero_init_residual,
+        )
+        self.mixer = resnet
+        self.qprojector = QProjector(
+            in_features=mlp_in_features,
+            hidden_features=mlp_hidden_features,
+            out_features=mlp_outfeatures,
+            activation=activation,
+            norm_layer=norm_layer,
+            hidden_mlp=hidden_mlp
+        )
+
+    def forward(self, x):
+        hidden_feats = self.mixer(x)  # (N, H)
+        latent_feats = self.qprojector(hidden_feats)  # (N, Z)
+        return hidden_feats, latent_feats
+
+
+# Mutate model from t-SimCNE https://arxiv.org/pdf/2210.09879.pdf
+def change_model(model, device, projection_dim, freeze_layer=None, change_layer=None):
+    # TODO different inits
+    if change_layer == "last":
+        in_features = model.qprojector.mlp[-1].weight_shape
+        model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)
+    elif change_layer == "mlp":
+        in_features = model.qprojector.mlp[-1].weight_shape
+        model.qprojector.mlp = QProjector(**model.qprojector.local).to(device)  # recreate with called arguments
+        model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)
+    else:
+        pass
+
+    if freeze_layer == "all":
+        model.requires_grad_(False)
+    elif freeze_layer == "mixer":
+        model.mixer.requires_grad_(False)
+        model.mlp.requires_grad_(True)
+    elif freeze_layer == "keeplast":
+        model.requires_grad_(False)
+        model.qprojector.mlp[-1].requires_grad_(True)
+    else:
+        model.requires_grad_(True)
+
+    return model
+
+
 if __name__ == "__main__":
     x = torch.rand((2, 3, 28, 28))
-    res = resnet34()
+    res = ResSCECLR(backbone_depth=34)
     print(res)
-    y = res(x)
-    print(y.shape)
+    y1, y2 = res(x)
+    print(y1.shape, y2.shape)
 
     
         
