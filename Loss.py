@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 
-class SCE(nn.Module):
+class SCELoss(nn.Module):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, metric="student-t"):
         super().__init__()
         self.metric = metric
@@ -16,12 +16,15 @@ class SCE(nn.Module):
 
         self.l2dist = nn.PairwiseDistance(p=2, keepdim=True)
 
-    def forward(self, batch):
-        (za_i, za_j), (zr_i, zr_j) = batch
+    def forward(self, z):
+        B = z.shape[0] // 4
+        za, zr = torch.chunk(z, 2)
+        za_i, za_j = torch.chunk(za, 2)
+        zr_i, zr_j = torch.chunk(zr, 2)
         self.xi = torch.zeros(1, ).to(za_i.device)
         self.omega = torch.zeros(1, ).to(za_i.device)
         # Process batch
-        B = za_i.size(0)
+        # B = za_i.size(0)
         # Positive forces
         qii = self.sim_function(za_i, za_j, metric=self.metric)  # (B,1)
         positive_forces = torch.mean(- torch.log(qii))
