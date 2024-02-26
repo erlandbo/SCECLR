@@ -4,21 +4,21 @@ from eval import evaluate, visualize_feats
 from data_utils import dataset_x, collate_fn_sce
 from data import Augmentation, SCEImageDataset, SSLImageDataset
 from Models import ResSCECLR, change_model
-from Loss import SCELoss
+from loss.sceclrlosses import SCELoss
+from loss.tsimcnelosses import InfoNCECauchy
 from torch.utils.data import DataLoader, ConcatDataset, RandomSampler
-from torch.optim import SGD
 import argparse
-from logger_utils import update_pbar, update_pbar_metrics
+from logger_utils import update_pbar, update_log, initialize_logger, write_model
+
 
 parser = argparse.ArgumentParser(description='SCECLR')
 
 parser.add_argument('--basedataset', default='cifar10', type=str)
 parser.add_argument('--device', default='cuda', type=str)
-parser.add_argument('--traindataset', default='sce', type=str)
-parser.add_argument('--combinetraintest', default=False, action=argparse.BooleanOptionalAction, help='whether to combine train and test for visualization')
+parser.add_argument('--traindataset', default='ssl', type=str)
 parser.add_argument('--imgsize', nargs=2, default=(32, 32), type=int)
 parser.add_argument('--augmode', default='train', type=str)
-parser.add_argument('--batchsize', default=64, type=int)
+parser.add_argument('--batchsize', default=512, type=int)
 parser.add_argument('--eval_epoch', default=5, type=int, help='knn and mlp evaluation epochs')
 parser.add_argument('--lr', nargs=3, default=(None, None, None), type=float, help='learning rate for the 3 train stages. If None automatically set by batchsize')
 parser.add_argument('--momentum', default=0.9, type=float)
@@ -28,7 +28,10 @@ parser.add_argument('--epochs', nargs=3, default=(1000, 450, 250), type=int, hel
 parser.add_argument('--warmupepochs', nargs=3, default=(10, 10, 10), type=int, help='warmup epochs for the 3 train stages')
 parser.add_argument('--numworkers', default=10, type=int)
 
-parser.add_argument('--loss_fn', default='sce', type=str, help='loss function to use')
+parser.add_argument('--mainpath', default="./", type=str)
+
+
+parser.add_argument('--loss_fn', default='infonce', type=str, help='loss function to use')
 # SCELoss
 parser.add_argument('--rho', default=-1, type=int, help='constant rho parameter for sce-loss or disable -1 for automatically set by batchsize')
 parser.add_argument('--alpha', default=0.5, type=int)
@@ -47,7 +50,7 @@ parser.add_argument('--norm_layer', default=True, action=argparse.BooleanOptiona
 parser.add_argument('--hidden_mlp', default=True, action=argparse.BooleanOptionalAction, help='One or none MLP hidden layers')
 
 
-def build_optimizer(model, lr, warmup_epochs, max_epochs, lendata,cosine_anneal=True, momentum=0.9, weight_decay=5e-4):
+def build_optimizer(model, lr, warmup_epochs, max_epochs, lendata, cosine_anneal=True, momentum=0.9, weight_decay=5e-4):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     lr_schedule_warmup = np.linspace(0.0, lr, warmup_epochs*lendata)
     T_max = lendata*(max_epochs - warmup_epochs)
@@ -83,7 +86,7 @@ def train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, 
 
         x1, x2 = batch
         x = torch.cat([x1, x2], dim=0).to(device)
-        z, h = model(x)
+        z, _ = model(x)
         optimizer.zero_grad()
         loss = loss_fn(z)
         loss.backward()
@@ -95,33 +98,31 @@ def train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, 
     return running_loss / len(dataloader)
 
 
-def train(model, dataloader, loss_fn, optimizer, lr_schedule, device, epochs, args, stage):
-    for epoch in range(epochs):
-        epoch_loss = train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, epoch)
-
-        scores = None
-        if epoch % args.eval_epoch == 0:
-            scores = evaluate(model, device, args)
-            if model.qprojector.mlp[-1].weight.shape[0] == 2:
-                visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
-
-        lr = lr_schedule[(epoch+1) * len(dataloader)]  # get next lr
-        update_pbar_metrics(epoch, epoch_loss, lr, scores)
+# def train(model, dataloader, loss_fn, optimizer, lr_schedule, device, epochs, args, stage):
+#     for epoch in range(0, epochs):
+#         epoch_loss = train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, epoch)
+#
+#         scores = None
+#         if epoch % args.eval_epoch == 0:
+#             scores = evaluate(model, device, args)
+#             if model.qprojector.mlp[-1].weight.shape[0] == 2:
+#                 visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
+#
+#         lr = lr_schedule[(epoch+1) * len(dataloader)-1]  # get next lr
+#         update_pbar_metrics(epoch, epoch_loss, lr, scores)
 
 
 def main():
     args = parser.parse_args()
 
+    logger = initialize_logger(args)
+
     device = torch.device("cuda:0" if args.device=="cuda" else "cpu")
 
     traindata, testdata, _ , imgsize, mean, std = dataset_x(args.basedataset)
-    if args.combinetraintest:
-        dataset = ConcatDataset([traindata, testdata])
-    else:
-        dataset = traindata
     if args.traindataset == "sce":
         augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=1)
-        dataset = SCEImageDataset(dataset, augmentation, args.sce_triplet)
+        dataset = SCEImageDataset(traindata, augmentation, args.sce_triplet)
         dataloader = DataLoader(
             dataset,
             batch_size=args.batchsize,
@@ -131,7 +132,7 @@ def main():
         )
     else:  # standard ssl
         augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
-        dataset = SSLImageDataset(dataset, augmentation)
+        dataset = SSLImageDataset(traindata, augmentation)
         dataloader = DataLoader(
             dataset,
             batch_size=args.batchsize,
@@ -148,7 +149,7 @@ def main():
             metric=args.metric
         ).to(device)
     else:
-        loss_fn = None
+        loss_fn = InfoNCECauchy()
 
     model = ResSCECLR(
         backbone_depth=args.backbone_depth,
@@ -179,8 +180,22 @@ def main():
             momentum=args.momentum,
             weight_decay=args.weight_decay
         )
+        write_model(model, args)
+        # train(model, dataloader, loss_fn, optimizer_i, lr_schedule_i, device, args.epochs[i], args, stage=i)
 
-        train(model, dataloader, loss_fn, optimizer_i, lr_schedule_i, device, args.epochs[i], args, stage=i)
+        for epoch in range(0, args.epochs[i]):
+            epoch_loss = train_one_epoch(model, dataloader, loss_fn, optimizer_i, lr_schedule_i, device, epoch)
+
+            scores = None
+            if epoch % args.eval_epoch == 0:
+                scores = evaluate(model, device, args)
+                if model.qprojector.mlp[-1].weight.shape[0] == 2:
+                    visualize_feats(model, stage=i, epoch=epoch, device=device, args=args)
+
+            update_log(logger, i, epoch, epoch_loss, lr_schedule_i[(epoch+1) * len(dataloader)-1], scores)
+
+        torch.save(model.state_dict(), args.exppath + "/model_stage_{}.pth".format(i))
+        torch.save(loss_fn.state_dict(), args.exppath + "/loss_stage_{}.pth".format(i))
 
 
 if __name__ == "__main__":

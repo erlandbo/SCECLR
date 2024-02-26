@@ -19,8 +19,8 @@ def data_features(model, dataloader, device):
             Z.append(z.cpu().numpy())
             H.append(h.cpu().numpy())
             targets.append(target.cpu().numpy())
-    H, Z, targets = np.concatenate(H, axis=0), np.concatenate(Z, axis=0), np.concatenate(targets, axis=0)  # (N, H), (N,Z), (N,)
-    return H, Z, targets
+    Z, H, targets = np.concatenate(Z, axis=0), np.concatenate(H, axis=0), np.concatenate(targets, axis=0)  # (N, Z), (N,H), (N,)
+    return Z, H, targets
 
 
 def evaluate(model, device, args):
@@ -30,8 +30,8 @@ def evaluate(model, device, args):
     trainloader = DataLoader(traindata, batch_size=512, shuffle=True)
     testloader = DataLoader(testdata, batch_size=512, shuffle=False)
 
-    H_train, Z_train, train_targets = data_features(model, trainloader, device)
-    H_test, Z_test, test_targets = data_features(model, testloader, device)
+    Z_train, H_train, train_targets = data_features(model, trainloader, device)
+    Z_test, H_test, test_targets = data_features(model, testloader, device)
 
     knn = KNeighborsClassifier(n_neighbors=20, metric='minkowski', p=2)
     # linear = LogisticRegression(solver='saga', n_jobs=-1)
@@ -39,9 +39,9 @@ def evaluate(model, device, args):
 
     scores = {}
     knn.fit(Z_train, train_targets)
-    scores["knn_score_z"] = knn.score(Z_test, test_targets)
+    scores["knn_score_Z"] = knn.score(Z_test, test_targets)
     knn.fit(H_train, train_targets)
-    scores["knn_score_h"] = knn.score(H_test, test_targets)
+    scores["knn_score_H"] = knn.score(H_test, test_targets)
     # linear.fit(H_train, train_targets)
     # scores["linear_score_h"] = linear.score(H_test, test_targets)
     # mlp.fit(H_train, train_targets)
@@ -56,11 +56,11 @@ def visualize_feats(model, stage, epoch, device, args):
     traindata.transform = testdata.transform = eval_transform
     data = ConcatDataset([traindata, testdata])
     dataloader = DataLoader(data, batch_size=512, shuffle=True)
-    _, Y, train_targets = data_features(model, dataloader, device)
+    Y, _, train_targets = data_features(model, dataloader, device)
     # plot the data
     fig, ax = plt.subplots(figsize=(20, 20))
     ax.scatter(*Y.T, c=train_targets, cmap="jet")
-    fig.savefig("2dfeats_{}_epoch_{}.png".format(stage, epoch))
+    fig.savefig(args.exppath + "/2dfeats_stage_{}_epoch_{}.png".format(stage, epoch))
     plt.close(fig)
 
 

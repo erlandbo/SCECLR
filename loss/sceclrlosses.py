@@ -18,20 +18,21 @@ class SCELoss(nn.Module):
 
     def forward(self, z):
         B = z.shape[0] // 2
-        za, zr = torch.chunk(z, 2)
-        za_i, za_j = torch.chunk(za, 2)
-        zr_i, zr_j = torch.chunk(zr, 2)
-        self.xi = torch.zeros(1, ).to(za_i.device)
-        self.omega = torch.zeros(1, ).to(za_i.device)
+        zi, zj = z[0:B], z[B:]
+        #za, zr = torch.chunk(z, 2)
+        #za_i, za_j = torch.chunk(za, 2)
+        #zr_i, zr_j = torch.chunk(zr, 2)
+        self.xi = torch.zeros(1, ).to(zi.device)
+        self.omega = torch.zeros(1, ).to(zi.device)
         # Process batch
         # B = za_i.size(0)
         # Positive forces
-        qii = self.sim_function(za_i, za_j, metric=self.metric)  # (B,1)
+        qii = self.sim_function(zi, zj, metric=self.metric)  # (B,1)
         positive_forces = torch.mean(- torch.log(qii))
         self.xi = self.xi + torch.sum(self.alpha * qii).detach()
         self.omega = self.omega + self.alpha * B
         # Negative forces
-        qij = self.sim_function(zr_i, zr_j, metric=self.metric)  # (B,1)
+        qij = self.sim_function(zi, torch.roll(zj, shifts=-1, dims=0), metric=self.metric)  # (B,1)
         negative_forces = torch.mean(qij * (self.N**2 / self.s_inv))
         self.xi = self.xi + torch.sum((1 - self.alpha) * qij).detach()
         self.omega = self.omega + (1 - self.alpha) * B
