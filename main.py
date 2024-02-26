@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from eval import evaluate
+from eval import evaluate, visualize_feats
 from data_utils import dataset_x, collate_fn_sce
 from data import Augmentation, SCEImageDataset, SSLImageDataset
 from Models import ResSCECLR, change_model
@@ -8,8 +8,7 @@ from Loss import SCELoss
 from torch.utils.data import DataLoader, ConcatDataset, RandomSampler
 from torch.optim import SGD
 import argparse
-from tqdm import trange
-
+from logger_utils import update_pbar, update_pbar_metrics
 
 parser = argparse.ArgumentParser(description='SCECLR')
 
@@ -20,8 +19,13 @@ parser.add_argument('--combinetraintest', default=False, action=argparse.Boolean
 parser.add_argument('--imgsize', nargs=2, default=(32, 32), type=int)
 parser.add_argument('--augmode', default='train', type=str)
 parser.add_argument('--batchsize', default=64, type=int)
-parser.add_argument('--lr', nargs=3, default=None, type=int, help='learning rate for the 3 train stages. If None automatically set by batchsize')
+parser.add_argument('--eval_epoch', default=5, type=int, help='knn and mlp evaluation epochs')
+parser.add_argument('--lr', nargs=3, default=(None, None, None), type=float, help='learning rate for the 3 train stages. If None automatically set by batchsize')
+parser.add_argument('--momentum', default=0.9, type=float)
+parser.add_argument('--weight_decay', default=5e-4, type=float)
+parser.add_argument('--cosine_anneal', default=True, action=argparse.BooleanOptionalAction, help='cosine or linear anneal lr')
 parser.add_argument('--epochs', nargs=3, default=(1000, 450, 250), type=int, help='epochs for the 3 train stages')
+parser.add_argument('--warmupepochs', nargs=3, default=(10, 10, 10), type=int, help='warmup epochs for the 3 train stages')
 parser.add_argument('--numworkers', default=10, type=int)
 
 parser.add_argument('--loss_fn', default='sce', type=str, help='loss function to use')
@@ -43,11 +47,40 @@ parser.add_argument('--norm_layer', default=True, action=argparse.BooleanOptiona
 parser.add_argument('--hidden_mlp', default=True, action=argparse.BooleanOptionalAction, help='One or none MLP hidden layers')
 
 
+def build_optimizer(model, lr, warmup_epochs, max_epochs, lendata,cosine_anneal=True, momentum=0.9, weight_decay=5e-4):
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    lr_schedule_warmup = np.linspace(0.0, lr, warmup_epochs*lendata)
+    T_max = lendata*(max_epochs - warmup_epochs)
+    if cosine_anneal:
+        # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.CosineAnnealingLR.html
+        anneal_steps = np.arange(0, T_max)
+        lr_schedule_anneal = 0.5 * lr * (1 + np.cos(anneal_steps/T_max * np.pi))
+    else:
+        lr_schedule_anneal = np.linspace(lr, 0.0, T_max)
+    # warmupsteps + annealsteps = lendata*max_epochs
+    lr_schedule = np.concatenate([lr_schedule_warmup, lr_schedule_anneal])
+    return optimizer, lr_schedule
+
+
+# Auto linear lr from [Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour] https://arxiv.org/pdf/1706.02677.pdf
+# Auto sqrt lr from SimCLR https://arxiv.org/pdf/2002.05709.pdf
+def auto_lr(batchsize, scale="linear"):
+    if scale == "linear":
+        base_lr = 0.03 * batchsize / 256
+    else:
+        base_lr = 0.075 * batchsize**0.5
+    return base_lr
+
+
 def train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, epoch):
     model.train()
     running_loss = 0.0
 
     for batch_idx, batch in enumerate(dataloader):
+
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr_schedule[epoch * len(dataloader) + batch_idx]
+
         x1, x2 = batch
         x = torch.cat([x1, x2], dim=0).to(device)
         z, h = model(x)
@@ -57,18 +90,23 @@ def train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, 
         optimizer.step()
         running_loss += loss.item()
 
-    lr_schedule.step()
+        update_pbar(batch_idx, len(dataloader))
+
     return running_loss / len(dataloader)
 
 
-def train(model, dataloader, loss_fn, optimizer, lr_schedule, device, epochs, args):
+def train(model, dataloader, loss_fn, optimizer, lr_schedule, device, epochs, args, stage):
     for epoch in range(epochs):
         epoch_loss = train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, epoch)
-        print(epoch, epoch_loss)
 
+        scores = None
         if epoch % args.eval_epoch == 0:
             scores = evaluate(model, device, args)
-            print(scores)
+            if model.qprojector.mlp[-1].weight.shape[0] == 2:
+                visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
+
+        lr = lr_schedule[(epoch+1) * len(dataloader)]  # get next lr
+        update_pbar_metrics(epoch, epoch_loss, lr, scores)
 
 
 def main():
@@ -112,7 +150,6 @@ def main():
     else:
         loss_fn = None
 
-
     model = ResSCECLR(
         backbone_depth=args.backbone_depth,
         in_channels=args.in_channels,
@@ -124,11 +161,26 @@ def main():
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
-    optimizer_1 = SGD(model.parameters(), lr=args.lr[0] if args.lr else 1e-4, momentum=0.9, weight_decay=5e-4)
-    lr_schedule_1 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_1, T_max=100)
+    for i in range(3):
 
+        if i == 1:
+            model = change_model(model, projection_dim=2, device=device, freeze_layer="keeplast", change_layer="last")
+        elif i == 2:
+            model = change_model(model,device=device, freeze_layer=None)
 
-    train(model, dataloader, loss_fn, optimizer_1, lr_schedule_1, device, args.epochs[0], args)
+        base_lri = auto_lr(args.batchsize) if args.lr[i] is None else args.lr[i]
+        optimizer_i, lr_schedule_i = build_optimizer(
+            model=model,
+            lr=base_lri,
+            warmup_epochs=args.warmupepochs[i],
+            max_epochs=args.epochs[i],
+            lendata=len(dataloader),
+            cosine_anneal=args.cosine_anneal,
+            momentum=args.momentum,
+            weight_decay=args.weight_decay
+        )
+
+        train(model, dataloader, loss_fn, optimizer_i, lr_schedule_i, device, args.epochs[i], args, stage=i)
 
 
 if __name__ == "__main__":

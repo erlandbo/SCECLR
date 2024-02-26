@@ -168,17 +168,17 @@ class ResSCECLR(nn.Module):
     def forward(self, x):
         hidden_feats = self.mixer(x)  # (N, H)
         latent_feats = self.qprojector(hidden_feats)  # (N, Z)
-        return hidden_feats, latent_feats
+        return latent_feats, hidden_feats
 
 
-# Mutate model from t-SimCNE https://arxiv.org/pdf/2210.09879.pdf
-def change_model(model, device, projection_dim, freeze_layer=None, change_layer=None):
+    # Mutate model from t-SimCNE https://arxiv.org/pdf/2210.09879.pdf
+def change_model(model, device, projection_dim=2, freeze_layer=None, change_layer=None):
     # TODO different inits
     if change_layer == "last":
-        in_features = model.qprojector.mlp[-1].weight_shape
+        in_features = model.qprojector.mlp[-1].weight.shape[1]
         model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)
     elif change_layer == "mlp":
-        in_features = model.qprojector.mlp[-1].weight_shape
+        in_features = model.qprojector.mlp[-1].weight.shape[1]
         model.qprojector.mlp = QProjector(**model.qprojector.local).to(device)  # recreate with called arguments
         model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)
     else:

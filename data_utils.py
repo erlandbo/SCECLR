@@ -2,19 +2,19 @@ import torch
 from torchvision.datasets import CIFAR10, CIFAR100
 
 
-def dataset_x(dataset_name, transform=None):
+def dataset_x(dataset_name, transform=None, download=True):
     datasets = {
         "cifar10": (
-            CIFAR10(root='./data', download=True, train=True),
-            CIFAR10(root='./data', download=True, train=False),
+            CIFAR10(root='./data', download=download, train=True),
+            CIFAR10(root='./data', download=download, train=False),
             10,  # classes
             (32,32),  # imgresol
             (0.4914, 0.4822, 0.4465),  # mean
             (0.2023, 0.1994, 0.2010),  # std
         ),
         "cifar100": (
-            CIFAR100(root='./data', download=True, train=True),
-            CIFAR100(root='./data', download=True, train=False),
+            CIFAR100(root='./data', download=download, train=True),
+            CIFAR100(root='./data', download=download, train=False),
             100,
             (32,32),
             (0.5071, 0.4867, 0.4408),

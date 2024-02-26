@@ -17,7 +17,7 @@ class SCELoss(nn.Module):
         self.l2dist = nn.PairwiseDistance(p=2, keepdim=True)
 
     def forward(self, z):
-        B = z.shape[0] // 4
+        B = z.shape[0] // 2
         za, zr = torch.chunk(z, 2)
         za_i, za_j = torch.chunk(za, 2)
         zr_i, zr_j = torch.chunk(zr, 2)
