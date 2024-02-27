@@ -13,18 +13,19 @@ def update_pbar(batch_idx, num_batches):
 
 
 def update_log(logger, stage, epoch, epoch_loss, lr, scores=None, buffer_vals=""):
-    log_str = 'Time:{} Stage:{} Epoch:{} LR:{} Loss:{} {} {}'.format(
+    # TODO make better
+    print_str = 'Time:{} Stage:{} Epoch:{} LR:{} Loss:{} {}'.format(
             time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
             stage,
             epoch,
             lr,
             epoch_loss,
             " ".join([f"{model}:{scores}" for (model, scores) in scores.items()]) if scores is not None else "",
-            buffer_vals
         )
     # PBar terminal
-    print(log_str)
+    print(print_str)
     # Logger
+    log_str = print_str + " " + buffer_vals
     logger.info(log_str)
 
 

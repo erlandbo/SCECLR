@@ -157,7 +157,7 @@ def main():
             warmup_epochs=args.warmupepochs[i],
             max_epochs=args.epochs[i],
             num_batches=len(dataloader),
-            cosine_anneal=args.cosine_anneal,
+            cosine_anneal=args.lr_anneal,
             momentum=args.momentum,
             weight_decay=args.weight_decay
         )
@@ -179,12 +179,9 @@ def main():
                 epoch_loss=epoch_loss,
                 lr=lr_schedule_i[(epoch+1) * len(dataloader)-1],
                 scores=scores,
-                buffer_vals=" ".join([f"{name}:{val}" for (name, val) in criterion.named_buffers()])
+                buffer_vals=" ".join([f"{name}:{val.item()}" for (name, val) in criterion.named_buffers()])
             )
 
-            # import pdb; pdb.set_trace()
-
-            # print(loss_fn)
 
         torch.save(model.state_dict(), args.exppath + "/model_stage_{}.pth".format(i))
         torch.save(criterion.state_dict(), args.exppath + "/loss_stage_{}.pth".format(i))

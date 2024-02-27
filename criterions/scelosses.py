@@ -28,8 +28,19 @@ class SCEBase(nn.Module):
         self.register_buffer("alpha", torch.zeros(1, ) + alpha)
         self.register_buffer("rho", torch.zeros(1, ) + rho)  # Automatically set rho or constant
 
+        ########### Debug
+        self.register_buffer("qii", torch.zeros(1, ) )
+        self.register_buffer("qij", torch.zeros(1, ) )
+        self.register_buffer("qcoeff", torch.zeros(1, ) )
+        ##################
+
     @torch.no_grad()
     def update_s(self, qii, qij):
+        #####################
+        self.qii = qii.mean()
+        self.qij = qij.mean()
+        self.qcoeff = self.N.pow(2) / self.s_inv
+        #######################
         self.xi = torch.zeros(1, ).to(qii.device)
         self.omega = torch.zeros(1, ).to(qij.device)
         # Attraction
@@ -55,14 +66,16 @@ class StudenttLoss(SCEBase):
         B = z.shape[0] // 2
         zi, zj = z[0:B], z[B:]
         # TODO add dof
+        # https://arxiv.org/pdf/1902.05804.pdf
+        alpha = 0.5
         # Attraction
         pairdist_ii = F.pairwise_distance(zi, zj, keepdim=True)
-        qii = 1.0 / ( pairdist_ii.pow(2) + 1.0 )  # (B,1)
+        qii = 1.0 / ( pairdist_ii.pow(2)/alpha + 1.0 )**alpha  # (B,1)
         attractive_forces = - torch.log(qii)
 
         # Repulsion
         pairdist_ij = F.pairwise_distance(zi, torch.roll(zj, shifts=-1, dims=0), keepdim=True)
-        qij = 1.0 / ( pairdist_ij.pow(2) + 1.0 )  # (B,1)
+        qij = 1.0 / ( pairdist_ij.pow(2)/alpha + 1.0 )**alpha  # (B,1)
 
         s_hat = self.N.pow(2) / self.s_inv
         repulsive_forces = qij * s_hat

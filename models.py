@@ -125,7 +125,7 @@ class QProjector(nn.Module):
             nn.ReLU() if activation == "ReLU" else nn.GELU(),
             nn.Linear(in_features=hidden_features, out_features=out_features)
         ) if hidden_mlp else nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features))
-        # Store values for easy recreation
+        # Store values for easy recreation in method change_model(...)
         # TODO change?
         local = locals()
         del local["self"]

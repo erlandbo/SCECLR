@@ -29,16 +29,20 @@ class SCECLRBase(nn.Module):
         self.register_buffer("s_inv", torch.zeros(1, ) + N**S_init)
         self.register_buffer("alpha", torch.zeros(1, ) + alpha)
         self.register_buffer("rho", torch.zeros(1, ) + rho)  # Automatically set rho or constant
-
-    # def __str__(self):
-    #     string = ""
-    #     for name, param in self.named_buffers():
-    #         string += "{}: {} ".format( name, param)
-    #     string += "S-coeff: {}".format(self.N.pow(2)/self.s_inv)
-    #     return string
+        ########### Debug
+        self.register_buffer("qii", torch.zeros(1, ) )
+        self.register_buffer("qij", torch.zeros(1, ) )
+        self.register_buffer("qcoeff", torch.zeros(1, ) )
+        ##################
 
     @torch.no_grad()
     def update_s(self, qii, qij):
+        #####################
+        self.qii = qii.mean()
+        self.qij = qij.mean()
+        self.qcoeff = self.N.pow(2) / self.s_inv
+        #######################
+
         self.xi = torch.zeros(1, ).to(qii.device)
         self.omega = torch.zeros(1, ).to(qij.device)
 
@@ -60,7 +64,7 @@ class SCECLRBase(nn.Module):
 
 class StudenttLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1.0):
-        super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.dof = dof
 
     def forward(self, z):
@@ -68,29 +72,31 @@ class StudenttLoss(SCECLRBase):
         B = z.shape[0] // 2
         zi, zj = z[0:B], z[B:]
         # TODO add dof
-
-        q = 1.0 / ( torch.cdist(zi, zj, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
+        alpha = 0.5
+        q = 1.0 / ( torch.cdist(zi, zj, p=2).pow(2)/alpha + 1.0 )**alpha  # (B,E),(B,E) -> (B,B)
         Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
         Q = q / Z
 
         # Attraction
         Qii = torch.diag(Q).unsqueeze(1)  # (B,1)
+        qii = torch.diag(q).unsqueeze(1)  # (B,1)
         attractive_forces = - torch.log(Qii)
 
         # Repulsion
         Qij = Q[~torch.eye(B, dtype=torch.bool)]  # off diagonal
+        qij = q[~torch.eye(B, dtype=torch.bool)]  # off diagonal
         s_hat = self.N.pow(2) / self.s_inv
         repulsive_forces = torch.sum(Q, dim=1, keepdim=True) * s_hat
 
         loss = attractive_forces.mean() + repulsive_forces.mean()
-        self.update_s(Qii, Qij)
+        self.update_s(qii, qij)
 
         return loss
 
 
 class GaussianLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, var=0.5):
-        super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.var = var
 
     def forward(self, z):
@@ -117,7 +123,7 @@ class GaussianLoss(SCECLRBase):
 
 class CosineLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, tau=0.1):
-        super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.tau = tau
 
     def forward(self, z):
@@ -152,7 +158,7 @@ class CosineLoss(SCECLRBase):
 
 class DotProdLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, l2_reg=0.01):
-        super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.l2_reg = l2_reg
 
     def forward(self, z):
