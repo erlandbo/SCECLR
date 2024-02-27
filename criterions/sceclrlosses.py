@@ -4,6 +4,22 @@ from torch.nn import functional as F
 
 
 class SCECLRLoss(nn.Module):
+    def __init__(self, metric, **kwargs):
+        super().__init__()
+        if metric == 'student-t':
+            self.criterion = StudenttLoss(**kwargs)
+        elif metric == 'gaussian':
+            self.criterion = GaussianLoss(**kwargs)
+        elif metric == 'cosine':
+            self.criterion = CosineLoss(**kwargs)
+        elif metric == 'dotprodwl2':
+            self.criterion = DotProdLoss(**kwargs)
+
+    def forward(self, x):
+        return self.criterion(x)
+
+
+class SCECLRBase(nn.Module):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__()
         # buffer's current values can be loaded using the state_dict of the module which might be useful to know
@@ -42,9 +58,10 @@ class SCECLRLoss(nn.Module):
         self.s_inv = momentum * self.s_inv + (1 - momentum) * self.N.pow(2) * weighted_sum_count
 
 
-class StudtSCECLRLoss(SCECLRLoss):
+class StudenttLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1):
-        super(StudtSCECLRLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        self.dof = dof
 
     def forward(self, z):
 
@@ -68,14 +85,13 @@ class StudtSCECLRLoss(SCECLRLoss):
         loss = attractive_forces.mean() + repulsive_forces.mean()
         self.update_s(Qii, Qij)
 
-        # import pdb;pdb.set_trace()
-
         return loss
 
 
-class GaussianSCECLRLoss(SCECLRLoss):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
-        super(GaussianSCECLRLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+class GaussianLoss(SCECLRBase):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, var=0.5):
+        super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        self.var = var
 
     def forward(self, z):
         B = z.shape[0] // 2
@@ -99,9 +115,9 @@ class GaussianSCECLRLoss(SCECLRLoss):
         return loss
 
 
-class CosineSCECLRLoss(SCECLRLoss):
+class CosineLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, tau=0.1):
-        super(CosineSCECLRLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.tau = tau
 
     def forward(self, z):
@@ -134,9 +150,9 @@ class CosineSCECLRLoss(SCECLRLoss):
         return loss
 
 
-class DotProdSCECLRLoss(SCECLRLoss):
+class DotProdLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, l2_reg=0.01):
-        super(DotProdSCECLRLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.l2_reg = l2_reg
 
     def forward(self, z):

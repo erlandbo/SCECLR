@@ -1,15 +1,16 @@
-import numpy as np
 import torch
+from torch.utils.data import DataLoader, RandomSampler
+import argparse
+
 from eval import evaluate, visualize_feats
 from data_utils import dataset_x, collate_fn_sce
 from data import Augmentation, SCEImageDataset, SSLImageDataset
 from Models import ResSCECLR, change_model
-from criterions.scelosses import StudtSCELoss
-from criterions.sceclrlosses import StudtSCECLRLoss, GaussianSCECLRLoss, CosineSCECLRLoss
+from criterions.scelosses import SCELoss
+from criterions.sceclrlosses import SCECLRLoss
 from criterions.tsimcnelosses import InfoNCECauchy
-from torch.utils.data import DataLoader, ConcatDataset, RandomSampler
-import argparse
 from logger_utils import update_pbar, update_log, initialize_logger, write_model
+from optimization import auto_lr, build_optimizer
 
 
 parser = argparse.ArgumentParser(description='SCECLR')
@@ -48,31 +49,6 @@ parser.add_argument('--mlp_hidden_features', default=1024, type=int)
 parser.add_argument('--outfeatures', default=2, type=int, help='Latent space features')
 parser.add_argument('--norm_layer', default=True, action=argparse.BooleanOptionalAction, help='whether to use batch-normalization layers')
 parser.add_argument('--hidden_mlp', default=True, action=argparse.BooleanOptionalAction, help='One or none MLP hidden layers')
-
-
-def build_optimizer(model, lr, warmup_epochs, max_epochs, lendata, cosine_anneal=True, momentum=0.9, weight_decay=5e-4):
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    lr_schedule_warmup = np.linspace(0.0, lr, warmup_epochs*lendata)
-    T_max = lendata*(max_epochs - warmup_epochs)
-    if cosine_anneal:
-        # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.CosineAnnealingLR.html
-        anneal_steps = np.arange(0, T_max)
-        lr_schedule_anneal = 0.5 * lr * (1 + np.cos(anneal_steps/T_max * np.pi))
-    else:
-        lr_schedule_anneal = np.linspace(lr, 0.0, T_max)
-    # warmupsteps + annealsteps = lendata*max_epochs
-    lr_schedule = np.concatenate([lr_schedule_warmup, lr_schedule_anneal])
-    return optimizer, lr_schedule
-
-
-# Auto linear lr from [Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour] https://arxiv.org/pdf/1706.02677.pdf
-# Auto sqrt lr from SimCLR https://arxiv.org/pdf/2002.05709.pdf
-def auto_lr(batchsize, scale="linear"):
-    if scale == "linear":
-        base_lr = 0.03 * batchsize / 256
-    else:
-        base_lr = 0.075 * batchsize**0.5
-    return base_lr
 
 
 def train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, epoch):
@@ -126,16 +102,20 @@ def main():
             num_workers=args.numworkers
         )
 
+    N_dataitems = len(dataset)
+    num_batches = len(dataloader)
+
     if args.loss_fn == "sce":
-        loss_fn = StudtSCELoss(
-            N=len(dataset),
+        loss_fn = SCELoss(
+            N=N_dataitems,
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
         ).to(device)
     elif args.loss_fn == "sceclr":
-        loss_fn = StudtSCECLRLoss(
-            N=len(dataset),
+        loss_fn = SCECLRLoss(
+            metric=args.metric,
+            N=N_dataitems,
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
@@ -168,7 +148,7 @@ def main():
             lr=base_lri,
             warmup_epochs=args.warmupepochs[i],
             max_epochs=args.epochs[i],
-            lendata=len(dataloader),
+            num_batches=num_batches,
             cosine_anneal=args.cosine_anneal,
             momentum=args.momentum,
             weight_decay=args.weight_decay
@@ -185,7 +165,7 @@ def main():
                 if model.qprojector.mlp[-1].weight.shape[0] == 2:
                     visualize_feats(model, stage=i, epoch=epoch, device=device, args=args)
 
-            update_log(logger, i, epoch, epoch_loss, lr_schedule_i[(epoch+1) * len(dataloader)-1], scores)
+            update_log(logger, i, epoch, epoch_loss, lr_schedule_i[(epoch+1) * N_dataitems-1], scores)
 
             # import pdb; pdb.set_trace()
 

@@ -4,11 +4,11 @@ import logging
 import os
 
 
-def update_pbar(batch_idx, lendata):
+def update_pbar(batch_idx, num_batches):
     # https://stackoverflow.com/questions/3419984/print-to-the-same-line-and-not-a-new-line
     barlen = 30
-    percentcomplete = (batch_idx + 1) / lendata * barlen
-    percentremain = barlen - (batch_idx + 1) / lendata * barlen
+    percentcomplete = (batch_idx + 1) / num_batches * barlen
+    percentremain = barlen - (batch_idx + 1) / num_batches * barlen
     print("\r[{}]".format("*"*int(percentcomplete) + " " * int(percentremain)), end="")
 
 

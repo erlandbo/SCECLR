@@ -4,6 +4,18 @@ from torch.nn import functional as F
 
 
 class SCELoss(nn.Module):
+    def __init__(self, metric, **kwargs):
+        super().__init__()
+        if metric == 'student-t':
+            self.criterion = StudenttLoss(**kwargs)
+        elif metric == 'gaussian':
+            self.criterion = GaussianLoss(**kwargs)
+
+    def forward(self, x):
+        return self.criterion(x)
+
+
+class SCEBase(nn.Module):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__()
         # buffer's current values can be loaded using the state_dict of the module which might be useful to know
@@ -32,9 +44,10 @@ class SCELoss(nn.Module):
         self.s_inv = momentum * self.s_inv + (1 - momentum) * self.N.pow(2) * weighted_sum_count
 
 
-class StudtSCELoss(SCELoss):
+class StudenttLoss(SCEBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1):
-        super(StudtSCELoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super(StudenttLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        self.dof = dof
 
     def forward(self, z):
         B = z.shape[0] // 2
@@ -53,14 +66,14 @@ class StudtSCELoss(SCELoss):
         repulsive_forces = qij * s_hat
         loss = attractive_forces.mean() + repulsive_forces.mean()
         self.update_s(qii, qij)
-        # import pdb; pdb.set_trace()
 
         return loss
 
 
-class GaussianSCELoss(SCELoss):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, var=1):
-        super(GaussianSCELoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+class GaussianLoss(SCEBase):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, var=0.5):
+        super(GaussianLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        self.var = var
 
     def forward(self, z):
         self.xi = torch.zeros(1, ).to(z.device)
@@ -87,6 +100,7 @@ class GaussianSCELoss(SCELoss):
         loss = attractive_forces + repulsive_forces
         self.update_s(qii, qij)
         return loss
+
 
 
 # class CosineSCELoss(SCELoss):
