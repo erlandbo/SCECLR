@@ -4,8 +4,9 @@ from eval import evaluate, visualize_feats
 from data_utils import dataset_x, collate_fn_sce
 from data import Augmentation, SCEImageDataset, SSLImageDataset
 from Models import ResSCECLR, change_model
-from loss.sceclrlosses import SCELoss
-from loss.tsimcnelosses import InfoNCECauchy
+from criterions.scelosses import StudtSCELoss
+from criterions.sceclrlosses import StudtSCECLRLoss, GaussianSCECLRLoss, CosineSCECLRLoss
+from criterions.tsimcnelosses import InfoNCECauchy
 from torch.utils.data import DataLoader, ConcatDataset, RandomSampler
 import argparse
 from logger_utils import update_pbar, update_log, initialize_logger, write_model
@@ -30,12 +31,11 @@ parser.add_argument('--numworkers', default=10, type=int)
 
 parser.add_argument('--mainpath', default="./", type=str)
 
-
-parser.add_argument('--loss_fn', default='infonce', type=str, help='loss function to use')
+parser.add_argument('--loss_fn', default='sce', type=str, help='loss function to use')
 # SCELoss
-parser.add_argument('--rho', default=-1, type=int, help='constant rho parameter for sce-loss or disable -1 for automatically set by batchsize')
-parser.add_argument('--alpha', default=0.5, type=int)
-parser.add_argument('--s_init', default=2.0, type=int)
+parser.add_argument('--rho', default=-1., type=float, help='constant rho parameter for sce-loss or disable -1 for automatically set by batchsize')
+parser.add_argument('--alpha', default=0.5, type=float)
+parser.add_argument('--s_init', default=2.0, type=float)
 parser.add_argument('--metric', default="student-t", type=str, help='similarity metric to use')
 parser.add_argument('--sce_triplet', default=False, action=argparse.BooleanOptionalAction, help='whether to form triplets in sce')
 
@@ -98,20 +98,6 @@ def train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, 
     return running_loss / len(dataloader)
 
 
-# def train(model, dataloader, loss_fn, optimizer, lr_schedule, device, epochs, args, stage):
-#     for epoch in range(0, epochs):
-#         epoch_loss = train_one_epoch(model, dataloader, loss_fn, optimizer, lr_schedule, device, epoch)
-#
-#         scores = None
-#         if epoch % args.eval_epoch == 0:
-#             scores = evaluate(model, device, args)
-#             if model.qprojector.mlp[-1].weight.shape[0] == 2:
-#                 visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
-#
-#         lr = lr_schedule[(epoch+1) * len(dataloader)-1]  # get next lr
-#         update_pbar_metrics(epoch, epoch_loss, lr, scores)
-
-
 def main():
     args = parser.parse_args()
 
@@ -141,15 +127,22 @@ def main():
         )
 
     if args.loss_fn == "sce":
-        loss_fn = SCELoss(
-            N=len(dataloader),
+        loss_fn = StudtSCELoss(
+            N=len(dataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
-            metric=args.metric
         ).to(device)
-    else:
+    elif args.loss_fn == "sceclr":
+        loss_fn = CosineSCECLRLoss(
+            N=len(dataset),
+            rho=args.rho,
+            alpha=args.alpha,
+            S_init=args.s_init,
+        ).to(device)
+    elif args.loss_fn == "infonce":
         loss_fn = InfoNCECauchy()
+
 
     model = ResSCECLR(
         backbone_depth=args.backbone_depth,
@@ -193,6 +186,10 @@ def main():
                     visualize_feats(model, stage=i, epoch=epoch, device=device, args=args)
 
             update_log(logger, i, epoch, epoch_loss, lr_schedule_i[(epoch+1) * len(dataloader)-1], scores)
+
+            #import pdb; pdb.set_trace()
+
+            print(loss_fn)
 
         torch.save(model.state_dict(), args.exppath + "/model_stage_{}.pth".format(i))
         torch.save(loss_fn.state_dict(), args.exppath + "/loss_stage_{}.pth".format(i))
