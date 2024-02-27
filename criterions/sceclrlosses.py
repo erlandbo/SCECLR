@@ -12,7 +12,7 @@ class SCECLRLoss(nn.Module):
             self.criterion = GaussianLoss(**kwargs)
         elif metric == 'cosine':
             self.criterion = CosineLoss(**kwargs)
-        elif metric == 'dotprodwl2':
+        elif metric == 'dotprod':
             self.criterion = DotProdLoss(**kwargs)
 
     def forward(self, x):
@@ -30,12 +30,12 @@ class SCECLRBase(nn.Module):
         self.register_buffer("alpha", torch.zeros(1, ) + alpha)
         self.register_buffer("rho", torch.zeros(1, ) + rho)  # Automatically set rho or constant
 
-    def __str__(self):
-        string = ""
-        for name, param in self.named_buffers():
-            string += "{}: {} ".format( name, param)
-        string += "S-coeff: {}".format(self.N.pow(2)/self.s_inv)
-        return string
+    # def __str__(self):
+    #     string = ""
+    #     for name, param in self.named_buffers():
+    #         string += "{}: {} ".format( name, param)
+    #     string += "S-coeff: {}".format(self.N.pow(2)/self.s_inv)
+    #     return string
 
     @torch.no_grad()
     def update_s(self, qii, qij):
@@ -59,7 +59,7 @@ class SCECLRBase(nn.Module):
 
 
 class StudenttLoss(SCECLRBase):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1.0):
         super(SCECLRBase, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.dof = dof
 
@@ -159,7 +159,7 @@ class DotProdLoss(SCECLRBase):
         B = z.shape[0] // 2
         zi, zj = z[0:B], z[B:2*B]
 
-        # TODO add var
+        # TODO add tau
         dotsim = torch.matmul(zi, zj.T)  # (B,E) @ (E,B) -> (N,B)
 
         q = torch.exp(dotsim)

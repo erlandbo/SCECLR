@@ -113,7 +113,6 @@ def resnet_x(depth, **kwargs):
         18: (ResNet(ResBlock, layers=[2,2,2,2],**kwargs), 512),
         34: (ResNet(ResBlock, layers=[3,4,6,3],**kwargs), 512),
     }
-    assert depth in resnets.keys(), "Invalid ResNet depth"
     return resnets[depth]
 
 
@@ -126,7 +125,8 @@ class QProjector(nn.Module):
             nn.ReLU() if activation == "ReLU" else nn.GELU(),
             nn.Linear(in_features=hidden_features, out_features=out_features)
         ) if hidden_mlp else nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features))
-        # Store values for recreation
+        # Store values for easy recreation
+        # TODO change?
         local = locals()
         del local["self"]
         del local["__class__"]
@@ -171,9 +171,9 @@ class ResSCECLR(nn.Module):
         return latent_feats, hidden_feats
 
 
-    # Mutate model from t-SimCNE https://arxiv.org/pdf/2210.09879.pdf
+# Mutate model from t-SimCNE https://arxiv.org/pdf/2210.09879.pdf
 def change_model(model, device, projection_dim=2, freeze_layer=None, change_layer=None):
-    # TODO different inits
+    # TODO different inits?
     if change_layer == "last":
         in_features = model.qprojector.mlp[-1].weight.shape[1]
         model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)

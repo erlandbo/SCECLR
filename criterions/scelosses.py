@@ -10,6 +10,8 @@ class SCELoss(nn.Module):
             self.criterion = StudenttLoss(**kwargs)
         elif metric == 'gaussian':
             self.criterion = GaussianLoss(**kwargs)
+        else:
+            raise ValueError(f'Undefined similarity metric in SCECLRLoss: {metric}')
 
     def forward(self, x):
         return self.criterion(x)
@@ -45,7 +47,7 @@ class SCEBase(nn.Module):
 
 
 class StudenttLoss(SCEBase):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1.0):
         super(StudenttLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.dof = dof
 
