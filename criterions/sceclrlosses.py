@@ -45,7 +45,6 @@ class SCECLRLoss(nn.Module):
 class StudtSCECLRLoss(SCECLRLoss):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1):
         super(StudtSCECLRLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
-        print(N, rho, alpha, S_init)
 
     def forward(self, z):
 
@@ -54,19 +53,20 @@ class StudtSCECLRLoss(SCECLRLoss):
         # TODO add dof
 
         q = 1.0 / ( torch.cdist(zi, zj, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
+        Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
+        Q = q / Z
 
         # Attraction
-        qii = torch.diag(q).unsqueeze(1)  # (B,1)
-        attractive_forces = - torch.log(qii)
+        Qii = torch.diag(Q).unsqueeze(1)  # (B,1)
+        attractive_forces = - torch.log(Qii)
 
         # Repulsion
-        qij = q[~torch.eye(B, dtype=torch.bool)]  # off diagonal
-        Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
+        Qij = Q[~torch.eye(B, dtype=torch.bool)]  # off diagonal
         s_hat = self.N.pow(2) / self.s_inv
-        repulsive_forces = torch.sum(q / Z, dim=1, keepdim=True) * s_hat
+        repulsive_forces = torch.sum(Q, dim=1, keepdim=True) * s_hat
 
         loss = attractive_forces.mean() + repulsive_forces.mean()
-        self.update_s(qii, qij)
+        self.update_s(Qii, Qij)
 
         # import pdb;pdb.set_trace()
 

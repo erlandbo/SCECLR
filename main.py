@@ -134,7 +134,7 @@ def main():
             S_init=args.s_init,
         ).to(device)
     elif args.loss_fn == "sceclr":
-        loss_fn = CosineSCECLRLoss(
+        loss_fn = StudtSCECLRLoss(
             N=len(dataset),
             rho=args.rho,
             alpha=args.alpha,
@@ -187,9 +187,9 @@ def main():
 
             update_log(logger, i, epoch, epoch_loss, lr_schedule_i[(epoch+1) * len(dataloader)-1], scores)
 
-            #import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
 
-            print(loss_fn)
+            # print(loss_fn)
 
         torch.save(model.state_dict(), args.exppath + "/model_stage_{}.pth".format(i))
         torch.save(loss_fn.state_dict(), args.exppath + "/loss_stage_{}.pth".format(i))
