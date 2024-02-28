@@ -1,13 +1,14 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from criterions.koleoloss import KoLeoLoss
 
 
 class SCELoss(nn.Module):
     def __init__(self, metric, **kwargs):
         super().__init__()
         if metric == 'student-t':
-            self.criterion = StudenttLoss(**kwargs)
+            self.criterion = HeavyTailedLoss(**kwargs)
         elif metric == 'gaussian':
             self.criterion = GaussianLoss(**kwargs)
         else:
@@ -52,37 +53,76 @@ class SCEBase(nn.Module):
         self.xi = self.xi + torch.sum((1 - self.alpha) * qij.detach())
         self.omega = self.omega + (1 - self.alpha) * Bij
         # Automatically set rho or constant
-        momentum = self.N.pow(2) / (self.N.pow(2) + self.omega) if self.rho < 0 else self.rho
+        momentum = self.N.pow(1) / (self.N.pow(1) + self.omega * 0.001 ) if self.rho < 0 else self.rho
         weighted_sum_count = self.xi / self.omega
         self.s_inv = momentum * self.s_inv + (1 - momentum) * self.N.pow(2) * weighted_sum_count
 
 
 class StudenttLoss(SCEBase):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1.0):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super(StudenttLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
-        self.dof = dof
+        self.koleoloss = KoLeoLoss()
 
     def forward(self, z):
         B = z.shape[0] // 2
         zi, zj = z[0:B], z[B:]
-        # TODO add dof
-        # https://arxiv.org/pdf/1902.05804.pdf
-        alpha = 0.5
         # Attraction
-        pairdist_ii = F.pairwise_distance(zi, zj, keepdim=True)
-        qii = 1.0 / ( pairdist_ii.pow(2)/alpha + 1.0 )**alpha  # (B,1)
+        pairdist_ii = F.pairwise_distance(zi, zj, keepdim=True, eps=1e-8)
+        qii = 1.0 / ( pairdist_ii.pow(2)  + 1.0 )  # (B,1)
         attractive_forces = - torch.log(qii)
 
         # Repulsion
-        pairdist_ij = F.pairwise_distance(zi, torch.roll(zj, shifts=-1, dims=0), keepdim=True)
-        qij = 1.0 / ( pairdist_ij.pow(2)/alpha + 1.0 )**alpha  # (B,1)
+        pairdist_ij = F.pairwise_distance(zi, torch.roll(zj, shifts=-1, dims=0), keepdim=True, eps=1e-8)
+        qij = 1.0 / ( pairdist_ij.pow(2)  + 1.0 )  # (B,1)
 
         s_hat = self.N.pow(2) / self.s_inv
         repulsive_forces = qij * s_hat
+
+        # koleoloss = (self.koleoloss(zi) + self.koleoloss(zj)) / 2 * 0.000
+
         loss = attractive_forces.mean() + repulsive_forces.mean()
+
+        # print(loss, koleoloss)
+
         self.update_s(qii, qij)
 
         return loss
+
+
+class HeavyTailedLoss(SCEBase):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, v=2.0):
+        super(HeavyTailedLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        self.v = v  # alpha in https://proceedings.neurips.cc/paper/2009/file/2291d2ec3b3048d1a6f86c2c4591b7e0-Paper.pdf
+        # https://arxiv.org/pdf/1902.05804.pdf
+        self.koleoloss = KoLeoLoss()
+
+    def forward(self, z):
+        B = z.shape[0] // 2
+        zi, zj = z[0:B], z[B:]
+        # Attraction
+        pairdist_ii = F.pairwise_distance(zi, zj, keepdim=True, eps=1e-8)
+        qii = 1 / ( pairdist_ii.pow(2) / self.v + 1.0 )**self.v  # (B,1)
+        attractive_forces = - torch.log(qii)
+
+        # Repulsion
+        pairdist_ij = F.pairwise_distance(zi, torch.roll(zj, shifts=-1, dims=0), keepdim=True, eps=1e-8)
+        qij = 1 / ( pairdist_ij.pow(2) / self.v + 1.0 )**self.v   # (B,1)
+
+        s_hat = self.N.pow(2) / self.s_inv
+        repulsive_forces = qij * s_hat
+
+        #koleoloss = self.koleoloss(zi, zj) * 0.01
+        koleoloss1 = self.koleoloss(zi, zi) * 0.001
+        koleoloss2 = self.koleoloss(zj, zj) * 0.001
+        koleoloss = (koleoloss1 + koleoloss2) / 2
+
+        loss = attractive_forces.mean() + repulsive_forces.mean()
+
+        # print(koleoloss, loss)
+
+        self.update_s(qii, qij)
+
+        return loss + koleoloss
 
 
 class GaussianLoss(SCEBase):

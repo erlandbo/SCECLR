@@ -39,7 +39,7 @@ def write_model(model, args):
 
 def initialize_logger(args):
     current_time = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
-    exppath = os.path.join(args.mainpath, "logs/"+current_time)
+    exppath = os.path.join(args.mainpath, "logs/"+current_time + f"_{args.criterion}_{args.metric}/")
     os.makedirs(exppath, exist_ok=False)
     args.exppath = exppath
     logging.basicConfig(format='%(message)s', filename=exppath + "/train.log", level=logging.INFO)
@@ -53,5 +53,6 @@ def store_hyperparameters(args):
     with open(args.exppath + "/parameters.txt", "w") as f:
         for key, value in args.__dict__.items():
             f.write(f"{key}: {value}\n")
+
 
 

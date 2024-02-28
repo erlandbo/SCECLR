@@ -28,13 +28,13 @@ parser.add_argument('--device', default='cuda', type=str, choices=["cuda", "cpu"
 
 # Hyperparameters and optimization parameters
 parser.add_argument('--batchsize', default=512, type=int)
-parser.add_argument('--eval_epoch', default=5, type=int, help='interval for evaluation epoch')
+parser.add_argument('--eval_epoch', default=10, type=int, help='interval for evaluation epoch')
 parser.add_argument('--lr', nargs=3, default=(None, None, None), type=float, help='Automatically set from batchsize None')
 parser.add_argument('--momentum', default=0.9, type=float)
 parser.add_argument('--weight_decay', default=5e-4, type=float)
 parser.add_argument('--lr_anneal', default="cosine_anneal", choices=["cosine_anneal", "linear_anneal"])
 parser.add_argument('--epochs', nargs=3, default=(1000, 450, 250), type=int)
-parser.add_argument('--warmupepochs', nargs=3, default=(10, 10, 10), type=int)
+parser.add_argument('--warmupepochs', nargs=3, default=(10, 0, 10), type=int)
 parser.add_argument('--numworkers', default=0, type=int)
 
 # Loss function
@@ -150,7 +150,7 @@ def main():
         elif i == 2:
             model = change_model(model, device=device, freeze_layer=None)
 
-        base_lri = auto_lr(args.batchsize) if args.lr[i] is None else args.lr[i]
+        base_lri = auto_lr(args.batchsize) if i < 2 else auto_lr(args.batchsize) / 1000 if args.lr[i] is None else args.lr[i]
         optimizer_i, lr_schedule_i = build_optimizer(
             model=model,
             lr=base_lri,

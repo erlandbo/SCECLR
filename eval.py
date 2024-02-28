@@ -46,7 +46,6 @@ def evaluate(model, device, args):
     # scores["linear_score_h"] = linear.score(H_test, test_targets)
     # mlp.fit(H_train, train_targets)
     # scores["mlp_score_h"] = mlp.score(H_test, test_targets)
-
     return scores
 
 
