@@ -39,7 +39,7 @@ parser.add_argument('--numworkers', default=0, type=int)
 
 # Loss function
 parser.add_argument('--criterion', default='sceclr', type=str, choices=["sce", "sceclr", "infonce"])
-parser.add_argument('--metric', default="student-t", type=str, choices=["student-t", "gaussian", "cosine", "dotprod"])
+parser.add_argument('--metric', default="cauchy", type=str, choices=["cauchy", "heavy-tailed", "gaussian", "cosine", "dotprod"])
 
 # SCE and SCECLR
 parser.add_argument('--rho', default=-1., type=float, help='Set constant rho, or automatically from batchsize -1')

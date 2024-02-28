@@ -7,12 +7,14 @@ from criterions.koleoloss import KoLeoLoss
 class SCELoss(nn.Module):
     def __init__(self, metric, **kwargs):
         super().__init__()
-        if metric == 'student-t':
+        if metric == 'cauchy':
+            self.criterion = CauchyLoss(**kwargs)
+        elif metric == 'heavy-tailed':
             self.criterion = HeavyTailedLoss(**kwargs)
         elif metric == 'gaussian':
             self.criterion = GaussianLoss(**kwargs)
         else:
-            raise ValueError(f'Undefined similarity metric in SCECLRLoss: {metric}')
+            raise ValueError(f'Undefined similarity metric in SCELoss: {metric}')
 
     def forward(self, x):
         return self.criterion(x)
@@ -53,14 +55,14 @@ class SCEBase(nn.Module):
         self.xi = self.xi + torch.sum((1 - self.alpha) * qij.detach())
         self.omega = self.omega + (1 - self.alpha) * Bij
         # Automatically set rho or constant
-        momentum = self.N.pow(1) / (self.N.pow(1) + self.omega * 0.001 ) if self.rho < 0 else self.rho
+        momentum = self.N.pow(1) / (self.N.pow(1) + self.omega * 0.01 ) if self.rho < 0 else self.rho
         weighted_sum_count = self.xi / self.omega
         self.s_inv = momentum * self.s_inv + (1 - momentum) * self.N.pow(2) * weighted_sum_count
 
 
-class StudenttLoss(SCEBase):
+class CauchyLoss(SCEBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
-        super(StudenttLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        super(CauchyLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.koleoloss = KoLeoLoss()
 
     def forward(self, z):
@@ -80,13 +82,19 @@ class StudenttLoss(SCEBase):
 
         # koleoloss = (self.koleoloss(zi) + self.koleoloss(zj)) / 2 * 0.000
 
+
+        #koleoloss1 = self.koleoloss(zi, zi) * 0.05
+        #koleoloss2 = self.koleoloss(zj, zj) * 0.05
+        koleoloss = self.koleoloss(zi, zj) * 0.1
+        #koleoloss = (koleoloss1 + koleoloss2) / 2
+
         loss = attractive_forces.mean() + repulsive_forces.mean()
 
-        # print(loss, koleoloss)
+        # print(koleoloss, loss)
 
         self.update_s(qii, qij)
 
-        return loss
+        return loss + koleoloss
 
 
 class HeavyTailedLoss(SCEBase):
@@ -112,13 +120,13 @@ class HeavyTailedLoss(SCEBase):
         repulsive_forces = qij * s_hat
 
         #koleoloss = self.koleoloss(zi, zj) * 0.01
-        koleoloss1 = self.koleoloss(zi, zi) * 0.001
-        koleoloss2 = self.koleoloss(zj, zj) * 0.001
+        koleoloss1 = self.koleoloss(zi, zi) * 0.0001
+        koleoloss2 = self.koleoloss(zj, zj) * 0.0001
         koleoloss = (koleoloss1 + koleoloss2) / 2
 
         loss = attractive_forces.mean() + repulsive_forces.mean()
 
-        # print(koleoloss, loss)
+        print(koleoloss, loss)
 
         self.update_s(qii, qij)
 

@@ -6,8 +6,8 @@ from torch.nn import functional as F
 class SCECLRLoss(nn.Module):
     def __init__(self, metric, **kwargs):
         super().__init__()
-        if metric == 'student-t':
-            self.criterion = StudenttLoss(**kwargs)
+        if metric == 'cauchy':
+            self.criterion = CauchyLoss(**kwargs)
         elif metric == 'gaussian':
             self.criterion = GaussianLoss(**kwargs)
         elif metric == 'cosine':
@@ -62,7 +62,7 @@ class SCECLRBase(nn.Module):
         self.s_inv = momentum * self.s_inv + (1 - momentum) * self.N.pow(2) * weighted_sum_count
 
 
-class StudenttLoss(SCECLRBase):
+class CauchyLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1.0):
         super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.dof = dof
