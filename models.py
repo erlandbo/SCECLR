@@ -126,15 +126,23 @@ class QProjector(nn.Module):
             nn.Linear(in_features=hidden_features, out_features=out_features)
         ) if hidden_mlp else nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features))
         # Store values for easy recreation in method change_model(...)
-        # TODO change?
-        local = locals()
-        del local["self"]
-        del local["__class__"]
-        self.local = local
+        for k,v in locals().items():
+            if k!='self': setattr(self, k, v)
 
     def forward(self, x):
         x = self.mlp(x)
         return x
+
+    @staticmethod
+    def create_new_model(cls, new_out_features):
+        return QProjector(
+            out_features=new_out_features,
+            in_features=cls.in_features,
+            hidden_features=cls.hidden_features,
+            activation=cls.activation,
+            norm_layer=cls.norm_layer,
+            hidden_mlp=cls.hidden_mlp
+        )
 
 
 class ResSCECLR(nn.Module):
@@ -178,9 +186,7 @@ def change_model(model, device, projection_dim=2, freeze_layer=None, change_laye
         in_features = model.qprojector.mlp[-1].weight.shape[1]
         model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)
     elif change_layer == "mlp":
-        in_features = model.qprojector.mlp[-1].weight.shape[1]
-        model.qprojector.mlp = QProjector(**model.qprojector.local).to(device)  # recreate with called arguments
-        model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)
+        model.qprojector = QProjector.create_new_model(model.qprojector, projection_dim).to(device)
     else:
         pass
 
@@ -188,7 +194,7 @@ def change_model(model, device, projection_dim=2, freeze_layer=None, change_laye
         model.requires_grad_(False)
     elif freeze_layer == "mixer":
         model.mixer.requires_grad_(False)
-        model.mlp.requires_grad_(True)
+        model.qprojector.mlp.requires_grad_(True)
     elif freeze_layer == "keeplast":
         model.requires_grad_(False)
         model.qprojector.mlp[-1].requires_grad_(True)

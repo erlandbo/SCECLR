@@ -26,6 +26,8 @@ parser.add_argument('--norm_layer', default=True, action=argparse.BooleanOptiona
 parser.add_argument('--hidden_mlp', default=True, action=argparse.BooleanOptionalAction, help='One or none MLP hidden layers')
 parser.add_argument('--device', default='cuda', type=str, choices=["cuda", "cpu"])
 
+
+
 # Hyperparameters and optimization parameters
 parser.add_argument('--batchsize', default=512, type=int)
 parser.add_argument('--eval_epoch', default=10, type=int, help='interval for evaluation epoch')
@@ -55,14 +57,19 @@ parser.add_argument('--augmode', default='train', type=str, choices=["train", "e
 # Logging
 parser.add_argument('--mainpath', default="./", type=str, help="path to store logs from experiments")
 
+# Re-start training
+parser.add_argument('--checkpoint_path', default="", type=str, help="path to model weights")
+parser.add_argument('--start_stage', default=0, type=int, choices=[0, 1, 2], help="start stage of training")
+
 # TODO remove?
 parser.add_argument('--traindataset', default='ssl',choices=["ssl", "sce"], type=str, help="Generic SSL dataset or SCE")
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, lr_schedule, device, epoch):
-    model.train()
-    running_loss = 0.0
 
+    model.train()
+
+    running_loss = 0.0
     for batch_idx, batch in enumerate(dataloader):
 
         for param_group in optimizer.param_groups:
@@ -143,38 +150,53 @@ def main():
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
-    for i in range(3):
+    # model.load_state_dict(torch.load("/home/erlandbo/repo/SCECLR/logs/2024_03_01_12_30_23_sce_heavy-tailed/model_stage_1.pth", map_location=device), strict=False)
+    # criterion.load_state_dict(torch.load("/home/erlandbo/repo/SCECLR/logs/2024_03_01_12_30_23_sce_heavy-tailed/loss_stage_1.pth", map_location=device), strict=False)
+    #
+    # import pdb; pdb.set_trace()
+    # torch.save({
+    #     "model_state_dict": model.state_dict(),
+    #     "criterion_state_dict": criterion.state_dict(),
+    # },"/home/erlandbo/repo/SCECLR/logs/2024_03_01_12_30_23_sce_heavy-tailed/checkpoint_stage_1.pth")
+    # exit()
 
-        if i == 1:
-            model = change_model(model, projection_dim=2, device=device, freeze_layer="keeplast", change_layer="last")
-        elif i == 2:
+    if args.checkpoint_path:
+        checkpoint = torch.load(args.checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        criterion.load_state_dict(checkpoint["criterion_state_dict"])
+
+    for stage in range( args.start_stage,3):
+
+        if stage == 1:
+            model = change_model(model, projection_dim=2, device=device, freeze_layer="mixer", change_layer="mlp")
+        elif stage == 2:
             model = change_model(model, device=device, freeze_layer=None)
 
-        base_lri = auto_lr(args.batchsize) if i < 2 else auto_lr(args.batchsize) / 1000 if args.lr[i] is None else args.lr[i]
+        base_lri = auto_lr(args.batchsize) if stage < 2 else auto_lr(args.batchsize) / 1000 if args.lr[stage] is None else args.lr[stage]
         optimizer_i, lr_schedule_i = build_optimizer(
             model=model,
             lr=base_lri,
-            warmup_epochs=args.warmupepochs[i],
-            max_epochs=args.epochs[i],
+            warmup_epochs=args.warmupepochs[stage],
+            max_epochs=args.epochs[stage],
             num_batches=len(dataloader),
-            cosine_anneal=args.lr_anneal,
+            lr_anneal=args.lr_anneal,
             momentum=args.momentum,
             weight_decay=args.weight_decay
         )
         write_model(model, args)
 
-        for epoch in range(0, args.epochs[i]):
+        for epoch in range(0, args.epochs[stage]):
             epoch_loss = train_one_epoch(model, dataloader, criterion, optimizer_i, lr_schedule_i, device, epoch)
 
             scores = None
             if epoch % args.eval_epoch == 0:
                 scores = evaluate(model, device, args)
                 if model.qprojector.mlp[-1].weight.shape[0] == 2:
-                    visualize_feats(model, stage=i, epoch=epoch, device=device, args=args)
+                    visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
 
             update_log(
                 logger,
-                stage=i,
+                stage=stage,
                 epoch=epoch,
                 epoch_loss=epoch_loss,
                 lr=lr_schedule_i[(epoch+1) * len(dataloader)-1],
@@ -183,8 +205,13 @@ def main():
             )
 
 
-        torch.save(model.state_dict(), args.exppath + "/model_stage_{}.pth".format(i))
-        torch.save(criterion.state_dict(), args.exppath + "/loss_stage_{}.pth".format(i))
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "criterion_state_dict": criterion.state_dict(),
+        }, args.exppath + "/checkpoint_stage_{}.pth".format(stage))
+
+        # torch.save(model.state_dict(), args.exppath + "/model_stage_{}.pth".format(stage))
+        # torch.save(criterion.state_dict(), args.exppath + "/loss_stage_{}.pth".format(stage))
 
 
 if __name__ == "__main__":
