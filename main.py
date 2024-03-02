@@ -3,8 +3,8 @@ from torch.utils.data import DataLoader, RandomSampler
 import argparse
 
 from eval import evaluate, visualize_feats
-from data_utils import dataset_x, collate_fn_sce
-from data import Augmentation, SCEImageDataset, SSLImageDataset
+from data_utils import dataset_x
+from data import Augmentation, SSLImageDataset
 from models import ResSCECLR, change_model
 from criterions.scelosses import SCELoss
 from criterions.sceclrlosses import SCECLRLoss
@@ -27,11 +27,10 @@ parser.add_argument('--hidden_mlp', default=True, action=argparse.BooleanOptiona
 parser.add_argument('--device', default='cuda', type=str, choices=["cuda", "cpu"])
 
 
-
 # Hyperparameters and optimization parameters
 parser.add_argument('--batchsize', default=512, type=int)
 parser.add_argument('--eval_epoch', default=10, type=int, help='interval for evaluation epoch')
-parser.add_argument('--lr', nargs=3, default=(None, None, None), type=float, help='Automatically set from batchsize None')
+parser.add_argument('--lr', nargs=3, default=(None, None, None), type=float, help='Automatically set from batchsize if None')
 parser.add_argument('--momentum', default=0.9, type=float)
 parser.add_argument('--weight_decay', default=5e-4, type=float)
 parser.add_argument('--lr_anneal', default="cosine_anneal", choices=["cosine_anneal", "linear_anneal"])
@@ -60,9 +59,6 @@ parser.add_argument('--mainpath', default="./", type=str, help="path to store lo
 # Re-start training
 parser.add_argument('--checkpoint_path', default="", type=str, help="path to model weights")
 parser.add_argument('--start_stage', default=0, type=int, choices=[0, 1, 2], help="start stage of training")
-
-# TODO remove?
-parser.add_argument('--traindataset', default='ssl',choices=["ssl", "sce"], type=str, help="Generic SSL dataset or SCE")
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, lr_schedule, device, epoch):
@@ -97,26 +93,15 @@ def main():
     device = torch.device("cuda:0" if args.device=="cuda" else "cpu")
 
     traindata, testdata, _ , imgsize, mean, std = dataset_x(args.basedataset)
-    # TODO remove?
-    if args.traindataset == "sce":
-        augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=1)
-        dataset = SCEImageDataset(traindata, augmentation, args.sce_triplet)
-        dataloader = DataLoader(
-            dataset,
-            batch_size=args.batchsize,
-            sampler=RandomSampler(data_source=dataset, replacement=True),
-            num_workers=args.numworkers,
-            collate_fn=collate_fn_sce
-        )
-    else:  # standard ssl
-        augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
-        dataset = SSLImageDataset(traindata, augmentation)
-        dataloader = DataLoader(
-            dataset,
-            batch_size=args.batchsize,
-            shuffle=True,
-            num_workers=args.numworkers
-        )
+
+    augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
+    dataset = SSLImageDataset(traindata, augmentation)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=args.batchsize,
+        shuffle=True,
+        num_workers=args.numworkers
+    )
 
     if args.criterion == "sce":
         criterion = SCELoss(
@@ -150,20 +135,13 @@ def main():
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
-    # model.load_state_dict(torch.load("/home/erlandbo/repo/SCECLR/logs/2024_03_01_12_30_23_sce_heavy-tailed/model_stage_1.pth", map_location=device), strict=False)
-    # criterion.load_state_dict(torch.load("/home/erlandbo/repo/SCECLR/logs/2024_03_01_12_30_23_sce_heavy-tailed/loss_stage_1.pth", map_location=device), strict=False)
-    #
-    # import pdb; pdb.set_trace()
-    # torch.save({
-    #     "model_state_dict": model.state_dict(),
-    #     "criterion_state_dict": criterion.state_dict(),
-    # },"/home/erlandbo/repo/SCECLR/logs/2024_03_01_12_30_23_sce_heavy-tailed/checkpoint_stage_1.pth")
-    # exit()
-
     if args.checkpoint_path:
         checkpoint = torch.load(args.checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
         criterion.load_state_dict(checkpoint["criterion_state_dict"])
+
+        #criterion.criterion.rho = torch.zeros(1, device=device) + 0.9995
+        #criterion.criterion.alpha = torch.zeros(1, device=device) + 0.01
 
     for stage in range( args.start_stage,3):
 

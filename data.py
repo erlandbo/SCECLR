@@ -3,33 +3,6 @@ import torch
 from torchvision import transforms
 
 
-class SCEImageDataset(Dataset):
-    def __init__(self, dataset, transform, triplet=False):
-        self.dataset = dataset
-        self.transform = transform
-        self.triplet = triplet
-
-    def __getitem__(self, idx):
-        N = len(self.dataset)
-        xa_i = idx  # uniform[1,...,N]
-        xa_i, _ = self.dataset[xa_i]
-
-        xr_i, xr_j = torch.randint(low=0, high=N, size=(2,)).tolist()
-        # xr_i, xr_j = (j - 1) // N + 1 , (j - 1) % N + 1  # uniform[1,...N]^2
-
-        if self.triplet: xr_i = xa_i  # reuse xa_i U[1,...N] and sample xr_i U[1,...N]
-
-        xr_i, _ = self.dataset[xr_i]
-        xr_j, _ = self.dataset[xr_j]
-
-        xa_i, xa_j = self.transform(xa_i), self.transform(xa_i)
-        xr_i, xr_j = self.transform(xr_i), self.transform(xr_j)
-        return xa_i, xa_i, xa_j, xr_i
-
-    def __len__(self):
-        return len(self.dataset)
-
-
 class SSLImageDataset(Dataset):
     def __init__(self, dataset, transform):
         self.dataset = dataset

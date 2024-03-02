@@ -32,9 +32,9 @@ class SCEBase(nn.Module):
 
         # TODO remove
         ########### Debug
-        self.register_buffer("qii", torch.nn.Parameter(torch.tensor(0.0)) )
+        self.register_buffer("qii", torch.nn.Parameter(torch.tensor(0.0), requires_grad=False))
         #self.register_buffer("qii", torch.zeros(1, ) )
-        self.register_buffer("qij", torch.nn.Parameter(torch.tensor(0.0)))
+        self.register_buffer("qij", torch.nn.Parameter(torch.tensor(0.0), requires_grad=False))
         #self.register_buffer("qij", torch.zeros(1, ) )
         self.register_buffer("qcoeff", torch.zeros(1, ) )
         ##################
@@ -42,8 +42,8 @@ class SCEBase(nn.Module):
     @torch.no_grad()
     def update_s(self, qii, qij):
         #####################
-        self.qii = torch.tensor(qii.mean())
-        self.qij = torch.tensor(qij.mean())
+        self.qii = torch.nn.Parameter(qii.clone().detach().mean(), requires_grad=False)
+        self.qij = torch.nn.Parameter(qij.clone().detach().mean(), requires_grad=False)
         self.qcoeff = self.N.pow(2) / self.s_inv
         #######################
         self.xi = torch.zeros(1, ).to(qii.device)
@@ -69,6 +69,8 @@ class CauchyLoss(SCEBase):
     def forward(self, z):
         B = z.shape[0] // 2
         zi, zj = z[0:B], z[B:]
+        z1, z2 = torch.cat([zi, zj], dim=0), torch.cat([zj, zi], dim=0)
+        zi, zj = z1, z2
         # Attraction
         pairdist_ii = F.pairwise_distance(zi, zj, keepdim=True, eps=1e-8)
         qii = 1.0 / ( pairdist_ii.pow(2)  + 1.0 )  # (B,1)

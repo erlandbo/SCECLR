@@ -24,10 +24,3 @@ def dataset_x(dataset_name, transform=None, download=True):
     assert dataset_name in datasets.keys(), "Invalid dataset name"
     return datasets[dataset_name]
 
-
-def collate_fn_sce(batch):
-    views = list(zip(*batch))  # ([xa_i], [xa_j], [xr_i], [xr_j])
-    views = [torch.stack(view) for view in views]
-    xa, xr = torch.cat(views[0:2], dim=0), torch.cat(views[2:4], dim=0)
-    return xa, xr
-
