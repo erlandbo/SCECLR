@@ -10,7 +10,7 @@ class InfoNCELoss(nn.Module):
         super().__init__()
         if metric == "cosine":
             self.criterion = InfoNCECosine(**kwargs)
-        elif metric == "student-t":  # actually Cauchy
+        elif metric == "cauchy":  # actually Cauchy
             self.criterion = InfoNCECauchy(**kwargs)
         elif metric == "gaussian":
             self.cls = InfoNCEGaussian(**kwargs)

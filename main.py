@@ -11,6 +11,7 @@ from criterions.sceclrlosses import SCECLRLoss
 from criterions.tsimcnelosses import InfoNCELoss
 from logger_utils import update_pbar, update_log, initialize_logger, write_model
 from optimization import auto_lr, build_optimizer
+from criterions.criterion_utils import change_criterion
 
 parser = argparse.ArgumentParser(description='SCECLR')
 
@@ -59,6 +60,10 @@ parser.add_argument('--mainpath', default="./", type=str, help="path to store lo
 # Re-start training
 parser.add_argument('--checkpoint_path', default="", type=str, help="path to model weights")
 parser.add_argument('--start_stage', default=0, type=int, choices=[0, 1, 2], help="start stage of training")
+# Change criterion for later stages. Can be combined with re-starting training from saved checkpoint
+parser.add_argument('--change_metric', default=None, type=str, choices=["cauchy", "heavy-tailed", "gaussian", "cosine", "dotprod"])
+parser.add_argument('--change_rho', default=None, type=float, help='Set constant rho, or automatically from batchsize -1')
+parser.add_argument('--change_alpha', default=None, type=float)
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, lr_schedule, device, epoch):
@@ -140,13 +145,15 @@ def main():
         model.load_state_dict(checkpoint["model_state_dict"])
         criterion.load_state_dict(checkpoint["criterion_state_dict"])
 
-        #criterion.criterion.rho = torch.zeros(1, device=device) + 0.9995
-        #criterion.criterion.alpha = torch.zeros(1, device=device) + 0.01
-
-    for stage in range( args.start_stage,3):
+    for stage in range(args.start_stage, 3):
 
         if stage == 1:
+            # model = change_model(model, projection_dim=2, device=device, freeze_layer="keeplast", change_layer="last")
             model = change_model(model, projection_dim=2, device=device, freeze_layer="mixer", change_layer="mlp")
+
+            if args.change_metric:
+                criterion = change_criterion(criterion, device, args.change_metric, new_rho=args.change_rho, new_alpha=args.change_alpha)
+
         elif stage == 2:
             model = change_model(model, device=device, freeze_layer=None)
 
