@@ -68,7 +68,6 @@ class SCEBase(nn.Module):
 class CauchyLoss(SCEBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super(CauchyLoss, self).__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
-        self.koleoloss = KoLeoLoss()
 
     def forward(self, z):
         B = z.shape[0] // 2
@@ -87,9 +86,7 @@ class CauchyLoss(SCEBase):
         s_hat = self.N.pow(2) / self.s_inv
         repulsive_forces = qij * s_hat
 
-        koleo_loss = self.koleoloss(zi, zj) * s_hat
-
-        loss = attractive_forces.mean() + repulsive_forces.mean() + koleo_loss * 0.25
+        loss = attractive_forces.mean() + repulsive_forces.mean()
 
         self.update_s(qii, qij)
 

@@ -2,8 +2,6 @@ import torch
 import numpy as np
 
 
-# TODO use torch instead of np?
-# TODO add rmsprop, adam?
 def build_optimizer(model, lr, warmup_epochs, max_epochs, num_batches, lr_anneal="cosine_anneal", momentum=0.9, weight_decay=5e-4):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     lr_schedule_warmup = np.linspace(0.0, stop=lr, num=warmup_epochs * num_batches)
