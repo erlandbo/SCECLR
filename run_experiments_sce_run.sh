@@ -1,0 +1,2 @@
+python main.py --eval_epoch 100 --basedataset cifar10 --batchsize 1024 --rho 0.9999 --epochs 2000 250 450 --outfeatures 128 --criterion sce --alpha 0.5 --numworkers 20 --metric cauchy --s_init 2.0 --lr_anneal linear_anneal --weight_decay 5.0e-4
+python main.py --eval_epoch 100 --basedataset cifar10 --batchsize 1024 --rho 0.9999 --epochs 2000 250 450 --outfeatures 128 --criterion sce --alpha 0.75 --numworkers 20 --metric cauchy --s_init 2.0 --lr_anneal linear_anneal --weight_decay 5.0e-4

@@ -3,11 +3,11 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class SCECLRLoss(nn.Module):
+class SCECLRV1Loss(nn.Module):
     def __init__(self, metric, **kwargs):
         super().__init__()
-        if metric == 'student-t':
-            self.criterion = StudenttLoss(**kwargs)
+        if metric == 'cauchy':
+            self.criterion = CauchyLoss(**kwargs)
         elif metric == 'gaussian':
             self.criterion = GaussianLoss(**kwargs)
         elif metric == 'cosine':
@@ -47,41 +47,37 @@ class SCECLRBase(nn.Module):
         self.Zi[x_idx] = momentum * self.Zi[x_idx] + (1 - momentum) * self.N.pow(2) * weighted_sum_count
 
 
-class StudenttLoss(SCECLRBase):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, dof=1.0):
+class CauchyLoss(SCECLRBase):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
-        self.dof = dof
 
-    def forward(self, x_idx, z):
+    def forward(self, feats_idx, feats):
+        B = feats.shape[0] // 2
+        q = 1.0 / ( torch.cdist(feats, feats, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
 
-        B = z.shape[0] // 2
-        zi, zj = z[0:B], z[B:]
-        # TODO add dof
-        q = 1.0 / ( torch.cdist(z, z, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
-
-        self_mask = torch.eye(2*B, device=z.device, dtype=torch.bool)
-
+        self_mask = torch.eye(2*B, device=feats.device, dtype=torch.bool)
         pos_mask = torch.roll(self_mask, shifts=B, dims=1)
 
-        q = q.masked_fill(self_mask, 0)
+        q.masked_fill(self_mask, 0.0)
+
         Z_batch = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
-        Z = Z_batch + self.s_inv[x_idx]
+        Z = Z_batch + self.s_inv[feats_idx]
 
         Q = q / Z
 
         # Attraction
         Qii = Q[pos_mask].unsqueeze(1)  # (B,1)
-        qii = q[pos_mask].unsqueeze(1)  # (B,1)
 
         attractive_forces = - torch.log(Qii)
 
         # Repulsion
-        qij = q[~pos_mask]  # off diagonal
+        Qij = Q[~pos_mask]  # off diagonal
         # s_hat = self.N.pow(2) / self.s_inv
+
         repulsive_forces = torch.sum(Q, dim=1, keepdim=True)
 
         loss = attractive_forces.mean() + repulsive_forces.mean()
-        self.update_s(qii, qij)
+        self.update_s(Qii, Qij)
 
         return loss
 
