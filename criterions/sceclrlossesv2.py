@@ -20,7 +20,7 @@ class SCECLRV1Loss(nn.Module):
 
 
 class SCECLRBase(nn.Module):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=1.0):
         super().__init__()
         # buffer's current values can be loaded using the state_dict of the module which might be useful to know
         self.register_buffer("xi", torch.zeros(1, ))  # weighted sum q

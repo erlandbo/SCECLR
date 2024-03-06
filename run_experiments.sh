@@ -1,1 +1,1 @@
-python main.py --batchsize 1024 --rho 0.9999 --epochs 500 500 500 --outfeatures 128 --criterion sceclrv1 --alpha 0.25 --numworkers 20 --metric cauchy --s_init 2.0 --lr_anneal linear_anneal --weight_decay 5.0e-4
+python main.py --batchsize 1024 --rho 0.99999 --epochs 1000 500 500 --outfeatures 128 --criterion sceclr --alpha 0.25 --numworkers 20 --metric cauchy --s_init 2.0 --lr_anneal cosine_anneal --weight_decay 5.0e-4
