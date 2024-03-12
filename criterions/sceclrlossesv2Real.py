@@ -63,7 +63,7 @@ class SCECLRBase(nn.Module):
 
 
 class CauchyLoss(SCECLRBase):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=1.0):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
 
     def forward(self, feats, feats_idx):
@@ -92,37 +92,21 @@ class CauchyLoss(SCECLRBase):
 
         # Attraction
         # Qii = Q[pos_mask].unsqueeze(1)  # (B,1)
-        attractive_forces = - torch.log(qii).mean()
+        attractive_forces = - torch.log(qii)
 
         # Repulsion
         s_hat = self.N.pow(1) / self.s_inv[feats_idx].unsqueeze(1)
-        moment = 0.9
-        Qij = qij / ( torch.mean(qij.detach(), dim=1, keepdim=True) * moment + (1.0 - moment) * 1.0 / s_hat )
-        Qji = qji / ( torch.mean(qji.detach(), dim=1, keepdim=True) * moment + (1.0 - moment) * 1.0 / s_hat )
+        #Qij = qij / ( torch.mean(qij, dim=1, keepdim=True) * 0.9 + 0.1 / s_hat )
+        #Qji = qji / ( torch.mean(qji, dim=1, keepdim=True) * 0.9 + 0.1 / s_hat )
 
-        repulsive_forces_1 = torch.sum(Qij, dim=1, keepdim=True) / (2.0 * B)
-        repulsive_forces_2 = torch.sum(Qji, dim=1, keepdim=True) / (2.0 * B)
-        repulsive_forces = ( repulsive_forces_1.mean() + repulsive_forces_2.mean() ) / 2.0
-        # repulsive_forces = ( torch.sum(Qij, dim=1, keepdim=True).mean() + torch.sum(Qji, dim=1, keepdim=True).mean() ) / (2.0 * 2.0 * B)
+        repulsive_forces_1 = - torch.log( torch.sum(Qij, dim=1, keepdim=True) + torch.sum(Qji, dim=1, keepdim=True) ) / 2
+        repulsive_forces_2 = ( torch.sum(Qij, dim=1, keepdim=True) + torch.sum(Qji, dim=1, keepdim=True) ) / 2
 
-        loss = attractive_forces + repulsive_forces
+        loss = attractive_forces.mean() + repulsive_forces.mean()
 
         self.update_s(qii, qij, qji, feats_idx)
 
-        # with torch.no_grad():
-        #    real_rep_loss = (torch.log(B*(torch.mean(qij, dim=1, keepdim=True) * 0.9 + 0.1 / s_hat ))).mean().detach()
-
-        # import pdb; pdb.set_trace()
-
-        # print("att", attractive_forces.mean())
-        # print("rep", repulsive_forces.mean())
-        #
-        # print("Qij", Qij.mean())
-        # print("Qij", Qij.mean())
-        # print("qij", qij.mean())
-        # print("qji", qji.mean())
-
-        return loss  # + real_rep_loss.detach()
+        return loss
 
 
 class GaussianLoss(SCECLRBase):

@@ -196,7 +196,7 @@ def main():
                 epoch_loss=epoch_loss,
                 lr=lr_schedule_i[(epoch+1) * len(dataloader)-1],
                 scores=scores,
-                buffer_vals=" ".join([f"{name}:{val.item()}" for (name, val) in criterion.named_buffers() if val.shape[0] < 2])
+                buffer_vals=" ".join([f"{name}:{val.item()}" for (name, val) in criterion.named_buffers() if val.numel() < 2])
             )
 
 
