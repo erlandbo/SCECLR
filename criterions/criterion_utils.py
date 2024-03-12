@@ -1,7 +1,7 @@
 import torch
 
 from criterions.scelosses import SCELoss
-from criterions.sceclrlosses import SCECLRLoss
+from criterions.sceclrlossesv1 import SCECLRV1Loss
 from criterions.tsimcnelosses import InfoNCELoss
 
 
@@ -19,8 +19,8 @@ def change_criterion(criterion, device, new_metric, new_rho=None, new_alpha=None
                 rho=criterion.criterion.rho.item(),
                 alpha=criterion.criterion.alpha.item(),
             ).to(device)
-        elif criterion_name == "sceclr":
-            new_criterion = SCECLRLoss(
+        elif criterion_name == "sceclrv1":
+            new_criterion = SCECLRV1Loss(
                 metric=new_metric,
                 N=criterion.criterion.N.item(),
                 rho=criterion.criterion.rho.item(),

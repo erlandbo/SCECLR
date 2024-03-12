@@ -1,5 +1,5 @@
 import torch
-from criterions.sceclrlosses import SCECLRLoss
+from criterions.sceclrlossesv1 import SCECLRLoss
 
 torch.manual_seed(0)
 def simclr(feats):

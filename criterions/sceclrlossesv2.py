@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class SCECLRV1Loss(nn.Module):
+class SCECLRV2Loss(nn.Module):
     def __init__(self, metric, **kwargs):
         super().__init__()
         if metric == 'cauchy':
@@ -36,48 +36,74 @@ class SCECLRBase(nn.Module):
         ##################
 
     @torch.no_grad()
-    def update_s(self, Z_batch, x_idx, qii, qij):
+    def update_s(self, qii, qij, qji, feats_idx):
         #####################
-        self.qii = qii.mean()
-        self.qij = qij.mean()
-        self.qcoeff = self.N.pow(2) / self.s_inv
+        # self.qii = qii.mean()
+        # self.qij = qij.mean()
+        # self.qcoeff = self.N.pow(2) / self.s_inv
         #######################
+        B = feats_idx.size(0)
+
+        self.xi = torch.zeros(B, ).to(qii.device)
+        self.omega = torch.zeros(B, ).to(qii.device)
+
+        # Attraction
+        self.xi = self.xi + torch.sum(self.alpha * qii.detach())
+        self.omega = self.omega + self.alpha * B
+
+        # Repulsion
+        qij_hat = (torch.sum(qij.detach(), dim=1) + torch.sum(qji.detach(), dim=1)) / (2 * B)
+        self.xi = self.xi + torch.sum((1 - self.alpha) * qij_hat )
+        self.omega = self.omega + (1 - self.alpha) * B
+
         # Automatically set rho or constant
-        momentum = self.N.pow(2) / (self.N.pow(2) + self.omega) if self.rho < 0 else self.rho
-        self.Zi[x_idx] = momentum * self.Zi[x_idx] + (1 - momentum) * self.N.pow(2) * weighted_sum_count
+        momentum = self.N.pow(1) / (self.N.pow(1) + self.omega) if self.rho < 0 else self.rho
+        weighted_sum_count = self.xi / self.omega
+        self.s_inv[feats_idx] = (1 - momentum) * self.s_inv[feats_idx] + momentum * self.N.pow(1) * weighted_sum_count
 
 
 class CauchyLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
 
-    def forward(self, feats_idx, feats):
+    def forward(self, feats, feats_idx):
         B = feats.shape[0] // 2
-        q = 1.0 / ( torch.cdist(feats, feats, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
+        feats_u, feats_v = feats[:B], feats[B:]
 
-        self_mask = torch.eye(2*B, device=feats.device, dtype=torch.bool)
-        pos_mask = torch.roll(self_mask, shifts=B, dims=1)
+        q_uv = 1.0 / ( torch.cdist(feats_u, feats_v, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
+        q_uu = 1.0 / ( torch.cdist(feats_u, feats_u, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
+        q_vv = 1.0 / ( torch.cdist(feats_v, feats_v, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
 
-        q.masked_fill(self_mask, 0.0)
+        self_mask = torch.eye(B, device=feats.device, dtype=torch.bool)
 
-        Z_batch = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
-        Z = Z_batch + self.s_inv[feats_idx]
+        qii = torch.diag(q_uv.clone())
 
-        Q = q / Z
+        # q_uv.masked_fill(self_mask, 0.0)
+
+        q_uu.masked_fill(self_mask, 0.0)
+        q_vv.masked_fill(self_mask, 0.0)
+
+        qij = torch.cat([q_uu, q_uv], dim=1)   # (B,B), (B,B) -> (B, 2B)
+        qji = torch.cat([q_uv.T, q_vv], dim=1)  # (B,B), (B,B) -> (B, 2B)
+
+        self.update_s(qii, qij, qji, feats_idx)
+
+        # Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
+
+        Qij = qij / self.s_inv[feats_idx]
+        Qji = qji / self.s_inv[feats_idx]
 
         # Attraction
-        Qii = Q[pos_mask].unsqueeze(1)  # (B,1)
-
-        attractive_forces = - torch.log(Qii)
+        # Qii = Q[pos_mask].unsqueeze(1)  # (B,1)
+        attractive_forces = - torch.log(qii)
 
         # Repulsion
-        Qij = Q[~pos_mask]  # off diagonal
-        # s_hat = self.N.pow(2) / self.s_inv
-
-        repulsive_forces = torch.sum(Q, dim=1, keepdim=True)
+        s_hat = self.N.pow(1) / self.s_inv
+        repulsive_forces = (torch.sum(Qij, dim=1, keepdim=True) + torch.sum(Qji, dim=1, keepdim=True)) * s_hat / 2
 
         loss = attractive_forces.mean() + repulsive_forces.mean()
-        self.update_s(Qii, Qij)
+
+        self.update_s(qii, qij, qji, feats_idx)
 
         return loss
 

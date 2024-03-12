@@ -20,13 +20,13 @@ class SCECLRV1Loss(nn.Module):
 
 
 class SCECLRBase(nn.Module):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=1.0):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__()
         # buffer's current values can be loaded using the state_dict of the module which might be useful to know
         self.register_buffer("xi", torch.zeros(1, ))  # weighted sum q
         self.register_buffer("omega", torch.zeros(1, ))  # count q
         self.register_buffer("N", torch.zeros(1, ) + N)  # N samples in dataset
-        self.register_buffer("s_inv", torch.zeros(N, ) + N**S_init)
+        self.register_buffer("s_inv", torch.zeros(1, ) + N**S_init)
         self.register_buffer("alpha", torch.zeros(1, ) + alpha)
         self.register_buffer("rho", torch.zeros(1, ) + rho)  # Automatically set rho or constant
         ########### Debug
@@ -36,66 +36,52 @@ class SCECLRBase(nn.Module):
         ##################
 
     @torch.no_grad()
-    def update_s(self, qii, qij, qji, feats_idx):
+    def update_s(self, qii, qij):
         #####################
-        # self.qii = qii.mean()
-        # self.qij = qij.mean()
-        # self.qcoeff = self.N.pow(2) / self.s_inv
+        self.qii = qii.mean()
+        self.qij = qij.mean()
+        self.qcoeff = self.N.pow(2) / self.s_inv
         #######################
-        B = feats_idx.size(0)
 
-        self.xi = torch.zeros(B, ).to(qii.device)
-        self.omega = torch.zeros(B, ).to(qii.device)
+        self.xi = torch.zeros(1, ).to(qii.device)
+        self.omega = torch.zeros(1, ).to(qij.device)
 
         # Attraction
+        Bii = qii.shape[0]
         self.xi = self.xi + torch.sum(self.alpha * qii.detach())
-        self.omega = self.omega + self.alpha * B
+        self.omega = self.omega + self.alpha * Bii
 
         # Repulsion
-        qij_hat = (torch.sum(qij.detach(), dim=1) + torch.sum(qji.detach(), dim=1)) / (2 * B)
-        self.xi = self.xi + torch.sum((1 - self.alpha) * qij_hat )
-        self.omega = self.omega + (1 - self.alpha) * B
+        Bij = qij.shape[0]
+        self.xi = self.xi + torch.sum((1 - self.alpha) * qij.detach().mean(dim=1))  # aggregate
+        self.omega = self.omega + (1 - self.alpha) * Bij
 
         # Automatically set rho or constant
-        momentum = self.N.pow(1) / (self.N.pow(1) + self.omega) if self.rho < 0 else self.rho
+        momentum = self.N.pow(2) / (self.N.pow(2) + self.omega) if self.rho < 0 else self.rho
         weighted_sum_count = self.xi / self.omega
-        self.s_inv[feats_idx] = momentum * self.s_inv[feats_idx] + (1 - momentum) * self.N.pow(1) * weighted_sum_count
+        self.s_inv = momentum * self.s_inv + (1 - momentum) * self.N.pow(2) * weighted_sum_count
 
 
 class CauchyLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
 
-    def forward(self, feats, feats_idx):
+    def forward(self, feats):
         B = feats.shape[0] // 2
-        feats_u, feats_v = feats[:B], feats[B:]
+        q = 1.0 / ( torch.cdist(feats, feats, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
 
-        q_uv = 1.0 / ( torch.cdist(feats_u, feats_v, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
-        q_uu = 1.0 / ( torch.cdist(feats_u, feats_u, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
-        q_vv = 1.0 / ( torch.cdist(feats_v, feats_v, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
+        self_mask = torch.eye(2*B, device=feats.device, dtype=torch.bool)
+        pos_mask = torch.roll(self_mask, shifts=B, dims=1)
 
-        self_mask = torch.eye(B, device=feats.device, dtype=torch.bool)
+        q.masked_fill(self_mask, 0.0)
+        with torch.no_grad():
+            Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
 
-        qii = torch.diag(q_uv.clone())
-
-        q_uv.masked_fill(self_mask, 0.0)
-
-        q_uu.masked_fill(self_mask, 0.0)
-        q_vv.masked_fill(self_mask, 0.0)
-
-        qij = torch.cat([q_uu, q_uv], dim=1)   # (B,B), (B,B) -> (B, 2B)
-        qji = torch.cat([q_uv.T, q_vv], dim=1)  # (B,B), (B,B) -> (B, 2B)
-
-        self.update_s(qii, qij, qji, feats_idx)
-
-        # Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
-
-        Qij = qij / self.s_inv[feats_idx]
-        Qji = qji / self.s_inv[feats_idx]
+        Q = q / Z.detach()
 
         # Attraction
-        Qii = Q[pos_mask].unsqueeze(1)  # (B,1)
-        attractive_forces = - torch.log(Qii)
+        qii = q[pos_mask].unsqueeze(1)  # (B,1)
+        attractive_forces = - torch.log(qii)
 
         # Repulsion
         s_hat = self.N.pow(2) / self.s_inv

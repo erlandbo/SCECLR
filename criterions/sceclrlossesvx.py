@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class SCECLRLoss(nn.Module):
+class SCECLRV1Loss(nn.Module):
     def __init__(self, metric, **kwargs):
         super().__init__()
         if metric == 'cauchy':
@@ -20,13 +20,13 @@ class SCECLRLoss(nn.Module):
 
 
 class SCECLRBase(nn.Module):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=1.0):
         super().__init__()
         # buffer's current values can be loaded using the state_dict of the module which might be useful to know
         self.register_buffer("xi", torch.zeros(1, ))  # weighted sum q
         self.register_buffer("omega", torch.zeros(1, ))  # count q
         self.register_buffer("N", torch.zeros(1, ) + N)  # N samples in dataset
-        self.register_buffer("s_inv", torch.zeros(1, ) + N**S_init)
+        self.register_buffer("s_inv", torch.zeros(N, ) + N**S_init)
         self.register_buffer("alpha", torch.zeros(1, ) + alpha)
         self.register_buffer("rho", torch.zeros(1, ) + rho)  # Automatically set rho or constant
         ########### Debug
@@ -36,37 +36,22 @@ class SCECLRBase(nn.Module):
         ##################
 
     @torch.no_grad()
-    def update_s(self, qii, qij):
+    def update_s(self, Z_batch, x_idx, qii, qij):
         #####################
         self.qii = qii.mean()
         self.qij = qij.mean()
         self.qcoeff = self.N.pow(2) / self.s_inv
         #######################
-
-        self.xi = torch.zeros(1, ).to(qii.device)
-        self.omega = torch.zeros(1, ).to(qij.device)
-
-        # Attraction
-        Bii = qii.shape[0]
-        self.xi = self.xi + torch.sum(self.alpha * qii.detach())
-        self.omega = self.omega + self.alpha * Bii
-
-        # Repulsion
-        Bij = qij.shape[0]
-        self.xi = self.xi + torch.sum((1 - self.alpha) * qij.detach().mean(dim=1))
-        self.omega = self.omega + (1 - self.alpha) * Bij
-
         # Automatically set rho or constant
         momentum = self.N.pow(2) / (self.N.pow(2) + self.omega) if self.rho < 0 else self.rho
-        weighted_sum_count = self.xi / self.omega
-        self.s_inv = momentum * self.s_inv + (1 - momentum) * self.N.pow(2) * weighted_sum_count
+        self.Zi[x_idx] = momentum * self.Zi[x_idx] + (1 - momentum) * self.N.pow(2) * weighted_sum_count
 
 
 class CauchyLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
 
-    def forward(self, feats):
+    def forward(self, feats_idx, feats):
         B = feats.shape[0] // 2
         q = 1.0 / ( torch.cdist(feats, feats, p=2).pow(2) + 1.0 )  # (B,E),(B,E) -> (B,B)
 
@@ -74,22 +59,25 @@ class CauchyLoss(SCECLRBase):
         pos_mask = torch.roll(self_mask, shifts=B, dims=1)
 
         q.masked_fill(self_mask, 0.0)
-        with torch.no_grad():
-            Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
 
-        Q = q / Z.detach()
+        Z_batch = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
+        Z = Z_batch + self.s_inv[feats_idx]
+
+        Q = q / Z
 
         # Attraction
-        qii = q[pos_mask].unsqueeze(1)  # (B,1)
-        attractive_forces = - torch.log(qii)
+        Qii = Q[pos_mask].unsqueeze(1)  # (B,1)
+
+        attractive_forces = - torch.log(Qii)
 
         # Repulsion
-        s_hat = self.N.pow(2) / self.s_inv
-        repulsive_forces = torch.sum(Q, dim=1, keepdim=True)  # * s_hat
+        Qij = Q[~pos_mask]  # off diagonal
+        # s_hat = self.N.pow(2) / self.s_inv
+
+        repulsive_forces = torch.sum(Q, dim=1, keepdim=True)
 
         loss = attractive_forces.mean() + repulsive_forces.mean()
-
-        self.update_s(q[pos_mask], q[~pos_mask].view(2*B, 2*B-1))
+        self.update_s(Qii, Qij)
 
         return loss
 

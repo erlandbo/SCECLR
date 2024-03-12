@@ -8,7 +8,8 @@ from data import Augmentation, SSLImageDataset
 from models import ResSCECLR, change_model
 from criterions.scelosses import SCELoss
 from criterions.scempairlosses import SCEMPairLoss
-from criterions.sceclrlosses import SCECLRLoss
+from criterions.sceclrlossesv1 import SCECLRV1Loss
+from criterions.sceclrlossesv2 import SCECLRV2Loss
 from criterions.tsimcnelosses import InfoNCELoss
 from logger_utils import update_pbar, update_log, initialize_logger, write_model
 from optimization import auto_lr, build_optimizer
@@ -41,7 +42,7 @@ parser.add_argument('--warmupepochs', nargs=3, default=(10, 0, 10), type=int)
 parser.add_argument('--numworkers', default=0, type=int)
 
 # Loss function
-parser.add_argument('--criterion', default='sce', type=str, choices=["sce", "sceclr", "scempair", "infonce"])
+parser.add_argument('--criterion', default='sce', type=str, choices=["sce", "sceclrv1", "scempair", "infonce"])
 parser.add_argument('--metric', default="cauchy", type=str, choices=["cauchy", "heavy-tailed", "gaussian", "cosine", "dotprod"])
 
 # SCE and SCECLR
@@ -125,8 +126,8 @@ def main():
             alpha=args.alpha,
             S_init=args.s_init,
         ).to(device)
-    elif args.criterion == "sceclr":
-        criterion = SCECLRLoss(
+    elif args.criterion == "sceclrv2":
+        criterion = SCECLRV2Loss(
             metric=args.metric,
             N=len(dataset),
             rho=args.rho,
