@@ -11,7 +11,7 @@ class SSLImageDataset(Dataset):
     def __getitem__(self, idx):
         x, y = self.dataset[idx]
         xa_i, xa_j = self.transform(x)
-        return xa_i, xa_j
+        return xa_i, xa_j, idx
 
     def __len__(self):
         return len(self.dataset)

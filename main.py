@@ -42,7 +42,7 @@ parser.add_argument('--warmupepochs', nargs=3, default=(10, 0, 10), type=int)
 parser.add_argument('--numworkers', default=0, type=int)
 
 # Loss function
-parser.add_argument('--criterion', default='sce', type=str, choices=["sce", "sceclrv1", "scempair", "infonce"])
+parser.add_argument('--criterion', default='sce', type=str, choices=["sce", "sceclrv1", "sceclrv2", "scempair", "infonce"])
 parser.add_argument('--metric', default="cauchy", type=str, choices=["cauchy", "heavy-tailed", "gaussian", "cosine", "dotprod"])
 
 # SCE and SCECLR
@@ -78,11 +78,11 @@ def train_one_epoch(model, dataloader, criterion, optimizer, lr_schedule, device
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr_schedule[epoch * len(dataloader) + batch_idx]
 
-        x1, x2 = batch
+        x1, x2, idx = batch
         x = torch.cat([x1, x2], dim=0).to(device)
         z, _ = model(x)
         optimizer.zero_grad()
-        loss = criterion(z)
+        loss = criterion(z, idx)
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
@@ -196,7 +196,7 @@ def main():
                 epoch_loss=epoch_loss,
                 lr=lr_schedule_i[(epoch+1) * len(dataloader)-1],
                 scores=scores,
-                buffer_vals=" ".join([f"{name}:{val.item()}" for (name, val) in criterion.named_buffers()])
+                buffer_vals=" ".join([f"{name}:{val.item()}" for (name, val) in criterion.named_buffers() if val.shape[0] < 2])
             )
 
 

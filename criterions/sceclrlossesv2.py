@@ -15,8 +15,8 @@ class SCECLRV2Loss(nn.Module):
         elif metric == 'dotprod':
             self.criterion = DotProdLoss(**kwargs)
 
-    def forward(self, x):
-        return self.criterion(x)
+    def forward(self, x, idx):
+        return self.criterion(x, idx)
 
 
 class SCECLRBase(nn.Module):
@@ -78,7 +78,7 @@ class CauchyLoss(SCECLRBase):
 
         qii = torch.diag(q_uv.clone())
 
-        # q_uv.masked_fill(self_mask, 0.0)
+        q_uv.masked_fill(self_mask, 0.0)
 
         q_uu.masked_fill(self_mask, 0.0)
         q_vv.masked_fill(self_mask, 0.0)
@@ -86,20 +86,20 @@ class CauchyLoss(SCECLRBase):
         qij = torch.cat([q_uu, q_uv], dim=1)   # (B,B), (B,B) -> (B, 2B)
         qji = torch.cat([q_uv.T, q_vv], dim=1)  # (B,B), (B,B) -> (B, 2B)
 
-        self.update_s(qii, qij, qji, feats_idx)
-
         # Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
 
-        Qij = qij / self.s_inv[feats_idx]
-        Qji = qji / self.s_inv[feats_idx]
+        # import pdb; pdb.set_trace()
 
         # Attraction
         # Qii = Q[pos_mask].unsqueeze(1)  # (B,1)
         attractive_forces = - torch.log(qii)
 
         # Repulsion
-        s_hat = self.N.pow(1) / self.s_inv
-        repulsive_forces = (torch.sum(Qij, dim=1, keepdim=True) + torch.sum(Qji, dim=1, keepdim=True)) * s_hat / 2
+        s_hat = self.N.pow(1) / self.s_inv[feats_idx].unsqueeze(1)
+        Qij = qij / ( torch.mean(qij, dim=1, keepdim=True) * 0.9 + 0.1 / s_hat )
+        Qji = qji / ( torch.mean(qji, dim=1, keepdim=True) * 0.9 + 0.1 / s_hat )
+
+        repulsive_forces = ( torch.sum(Qij, dim=1, keepdim=True) + torch.sum(Qji, dim=1, keepdim=True) ) / 2
 
         loss = attractive_forces.mean() + repulsive_forces.mean()
 
