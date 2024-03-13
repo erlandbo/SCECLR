@@ -150,6 +150,9 @@ def main():
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
+    print(augmentation.augmentations)
+    print(model)
+
     if args.checkpoint_path:
         checkpoint = torch.load(args.checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -158,8 +161,8 @@ def main():
     for stage in range(args.start_stage, 3):
 
         if stage == 1:
-            # model = change_model(model, projection_dim=2, device=device, freeze_layer="keeplast", change_layer="last")
-            model = change_model(model, projection_dim=2, device=device, freeze_layer="mixer", change_layer="mlp")
+            model = change_model(model, projection_dim=2, device=device, freeze_layer="keeplast", change_layer="last")
+            #model = change_model(model, projection_dim=2, device=device, freeze_layer="mixer", change_layer="mlp")
 
             if args.change_metric:
                 criterion = change_criterion(criterion, device, args.change_metric, new_rho=args.change_rho, new_alpha=args.change_alpha)

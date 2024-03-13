@@ -39,7 +39,7 @@ class Augmentation():
             augmentations = [transforms.Resize(size=imgsize)]
 
         if mode == "train":
-            augmentations+= [
+            augmentations += [
                 transforms.RandomApply([transforms.ColorJitter(
                     brightness=0.8 * jitter_strength,
                     contrast=0.8 * jitter_strength,

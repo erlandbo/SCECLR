@@ -3,6 +3,7 @@
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 class InfoNCELoss(nn.Module):
@@ -17,7 +18,7 @@ class InfoNCELoss(nn.Module):
         else:
             raise ValueError(f"Unknown {metric = !r} for InfoNCE loss")
 
-    def forward(self, x):
+    def forward(self, x, idx):
         return self.criterion(x)
 
 

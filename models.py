@@ -35,7 +35,7 @@ class ResNet(nn.Module):
         self.conv_1 = nn.Sequential(
             nn.Conv2d(in_channels, self.channels, kernel_size=7, stride=2, padding=3, bias=False) if first_conv else \
                 nn.Conv2d(in_channels, self.channels, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if first_maxpool else nn.MaxPool2d(kernel_size=1, stride=1, padding=0), 
+            # nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if first_maxpool else nn.MaxPool2d(kernel_size=1, stride=1, padding=0),
             nn.BatchNorm2d(self.channels),
             nn.ReLU() if activation == "ReLU" else nn.GELU()
         )
@@ -67,7 +67,7 @@ class ResNet(nn.Module):
     def build_layer(self, block, count_layers, stride, activation, channels):
         in_channels = self.channels
         if stride > 1 or channels * block.expansion != in_channels:
-            shortcut =nn.Sequential(
+            shortcut = nn.Sequential(
                 nn.Conv2d(in_channels, channels * block.expansion, kernel_size=1, stride=stride, padding=0, bias=False),
                 nn.BatchNorm2d(channels * block.expansion)
             )
@@ -121,7 +121,7 @@ class QProjector(nn.Module):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(in_features=in_features, out_features=hidden_features),
-            nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
+            # nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
             nn.ReLU() if activation == "ReLU" else nn.GELU(),
             nn.Linear(in_features=hidden_features, out_features=out_features)
         ) if hidden_mlp else nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features))
@@ -181,10 +181,10 @@ class ResSCECLR(nn.Module):
 
 # Mutate model from t-SimCNE https://arxiv.org/pdf/2210.09879.pdf
 def change_model(model, device, projection_dim=2, freeze_layer=None, change_layer=None):
-    # TODO different inits?
     if change_layer == "last":
         in_features = model.qprojector.mlp[-1].weight.shape[1]
         model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)
+        # TODO different inits?
     elif change_layer == "mlp":
         model.qprojector = QProjector.create_new_model(model.qprojector, projection_dim).to(device)
     else:

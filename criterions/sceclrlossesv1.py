@@ -74,6 +74,7 @@ class CauchyLoss(SCECLRBase):
         pos_mask = torch.roll(self_mask, shifts=B, dims=1)
 
         q.masked_fill(self_mask, 0.0)
+
         with torch.no_grad():
             Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
 
@@ -84,6 +85,8 @@ class CauchyLoss(SCECLRBase):
         attractive_forces = - torch.log(qii)
 
         # Repulsion
+        Q.masked_fill(pos_mask, 0.0)
+
         s_hat = self.N.pow(2) / self.s_inv
         repulsive_forces = torch.sum(Q, dim=1, keepdim=True) * s_hat
 

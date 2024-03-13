@@ -25,7 +25,8 @@ def data_features(model, dataloader, device):
 
 def evaluate(model, device, args):
     traindata, testdata, _, imgsize, mean, std = dataset_x(args.basedataset, download=False)
-    eval_transform = Augmentation(imgsize, mean, std, mode="eval", num_views=1)
+    eval_transform = Augmentation(imgsize, mean, std, mode="test", num_views=1)
+    # eval_transform = Augmentation(imgsize, mean, std, mode="eval", num_views=1)
     traindata.transform = testdata.transform = eval_transform
     trainloader = DataLoader(traindata, batch_size=512, shuffle=True)
     testloader = DataLoader(testdata, batch_size=512, shuffle=False)
@@ -33,8 +34,8 @@ def evaluate(model, device, args):
     Z_train, H_train, train_targets = data_features(model, trainloader, device)
     Z_test, H_test, test_targets = data_features(model, testloader, device)
 
-    knn = KNeighborsClassifier(n_neighbors=20, metric='minkowski', p=2)
-    # linear = LogisticRegression(solver='saga', n_jobs=-1)
+    knn = KNeighborsClassifier(n_neighbors=15, metric='minkowski', p=2)
+    linear = LogisticRegression(solver='saga', n_jobs=-1)
     # mlp = MLPClassifier(hidden_layer_sizes=(100, 100), activation='relu', solver='adam')
 
     scores = {}
@@ -42,8 +43,8 @@ def evaluate(model, device, args):
     scores["knn_score_Z"] = knn.score(Z_test, test_targets)
     knn.fit(H_train, train_targets)
     scores["knn_score_H"] = knn.score(H_test, test_targets)
-    # linear.fit(H_train, train_targets)
-    # scores["linear_score_h"] = linear.score(H_test, test_targets)
+    linear.fit(H_train, train_targets)
+    scores["linear_score_h"] = linear.score(H_test, test_targets)
     # mlp.fit(H_train, train_targets)
     # scores["mlp_score_h"] = mlp.score(H_test, test_targets)
     return scores
