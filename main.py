@@ -101,21 +101,27 @@ def main():
 
     device = torch.device("cuda:0" if args.device=="cuda" else "cpu")
 
-    traindata, testdata, _ , imgsize, mean, std = dataset_x(args.basedataset)
+    train_basedataset, test_basedataset, _ , imgsize, mean, std = dataset_x(args.basedataset)
 
-    augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
-    dataset = SSLImageDataset(traindata, augmentation)
-    dataloader = DataLoader(
-        dataset,
+    train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
+    train_dataset = SSLImageDataset(train_basedataset, train_augmentation)
+    trainloader = DataLoader(
+        train_dataset,
         batch_size=args.batchsize,
         shuffle=True,
-        num_workers=args.numworkers
+        num_workers=args.numworkers,
+        pin_memory=True
     )
+    memory_dataset, test_dataset, _ , imgsize, mean, std = dataset_x(args.basedataset)
+    test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
+    memory_dataset.transform = test_dataset.transform = test_augmentation
+    memory_loader = DataLoader(memory_dataset, batch_size=args.batchsize, shuffle=True, pin_memory=True)
+    testloader = DataLoader(test_dataset, batch_size=args.batchsize, shuffle=False, pin_memory=True)
 
     if args.criterion == "sce":
         criterion = SCELoss(
             metric=args.metric,
-            N=len(dataset),
+            N=len(train_dataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
@@ -123,7 +129,7 @@ def main():
     if args.criterion == "sceclrv1":
         criterion = SCECLRV1Loss(
             metric=args.metric,
-            N=len(dataset),
+            N=len(train_dataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
@@ -131,7 +137,7 @@ def main():
     elif args.criterion == "sceclrv2":
         criterion = SCECLRV2Loss(
             metric=args.metric,
-            N=len(dataset),
+            N=len(train_dataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
@@ -152,7 +158,7 @@ def main():
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
-    print(augmentation.augmentations)
+    print(train_augmentation.augmentations)
     print(model)
 
     print(args.mlp_hidden_features)
@@ -198,11 +204,11 @@ def main():
         write_model(model, args)
 
         for epoch in range(0, args.epochs[stage]):
-            epoch_loss = train_one_epoch(model, dataloader, criterion, optimizer_i, lr_schedule_i, device, epoch)
+            epoch_loss = train_one_epoch(model, trainloader, criterion, optimizer_i, lr_schedule_i, device, epoch)
 
             scores = None
             if epoch % args.eval_epoch == 0:
-                scores = evaluate(model, device, args)
+                scores = evaluate(model, memory_loader, testloader)
                 if model.qprojector.mlp[-1].weight.shape[0] == 2:
                     visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
 
