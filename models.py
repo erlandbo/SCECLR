@@ -51,9 +51,11 @@ class ResNet(nn.Module):
         for modl in self.modules():
             if isinstance(modl, nn.Conv2d):
                 nn.init.kaiming_normal_(modl.weight, mode="fan_out", nonlinearity="relu" if activation=="ReLU" else "leaky_relu")
+                #print(modl, "init")
             elif isinstance(modl, nn.BatchNorm2d):
                 nn.init.constant_(modl.weight, 1)
                 nn.init.constant_(modl.bias, 0)
+                #print(modl, "init")
 
         # Zero-initialize the last BN in each residual branch,
         # so that the residual branch starts with zeros, and each residual block behaves like an identity.
@@ -120,8 +122,8 @@ class QProjector(nn.Module):
     def __init__(self, in_features, hidden_features, out_features, activation="ReLU",  norm_layer=True, hidden_mlp=True):
         super().__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(in_features=in_features, out_features=hidden_features),
-            # nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
+            nn.Linear(in_features=in_features, out_features=hidden_features, bias=False),
+            nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
             nn.ReLU() if activation == "ReLU" else nn.GELU(),
             nn.Linear(in_features=hidden_features, out_features=out_features)
         ) if hidden_mlp else nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features))

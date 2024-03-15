@@ -125,38 +125,78 @@ class GaussianLoss(SCECLRBase):
 
 
 class CosineLoss(SCECLRBase):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, tau=0.1):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
         super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
-        self.tau = tau
+        self.temp = 0.5
 
-    def forward(self, z):
-        B = z.shape[0] // 2
-        z = F.normalize(z, dim=1)
-        zi, zj = z[0:B], z[B:2*B]
+    def forward(self, feats):
+        B = feats.shape[0] // 2
 
-        # TODO add var
-        cossim = torch.matmul(zi, zj.T) / self.tau  # (B,E) @ (E,B) -> (N,B)
+        feats = F.normalize(feats, dim=1, p=2)
 
-        q = torch.exp(cossim)
+        sim = torch.matmul(feats, feats.T)   # (B,E),(E,B) -> (B,B)
+        q = torch.exp(sim / self.temp)
 
-        Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
-        q = q / Z
+        self_mask = torch.eye(2*B, device=feats.device, dtype=torch.bool)
+        pos_mask = torch.roll(self_mask, shifts=B, dims=1)
+
+        q.masked_fill(self_mask, 0.0)
+
+        with torch.no_grad():
+            Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
+
+        Q = q / Z.detach()
+
         # Attraction
-        #cossim_ii = torch.diag(cossim).unsqueeze(1)  # (B,1)
-        qii = torch.diag(q).unsqueeze(1)  # (B,1)
-        #attractive_forces = cossim_ii   # log cancels exp
-        attractive_forces = -torch.log(qii)   # log cancels exp
-        #qii = torch.diag(q).unsqueeze(1)
+        qii = q[pos_mask].unsqueeze(1)  # (B,1)
+        attractive_forces = - torch.log(qii)
 
         # Repulsion
-        qij = q[~torch.eye(B, dtype=torch.bool)]  # off diagonal
-        #Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
+        Q.masked_fill(pos_mask, 0.0)
+
         s_hat = self.N.pow(2) / self.s_inv
-        repulsive_forces = torch.sum(q , dim=1, keepdim=True) * s_hat
+        repulsive_forces = torch.sum(Q, dim=1, keepdim=True) * s_hat
 
         loss = attractive_forces.mean() + repulsive_forces.mean()
-        self.update_s(qii, qij)
+
+        self.update_s(q[pos_mask], q[~pos_mask].view(2*B, 2*B-1))
+
         return loss
+
+
+# class CosineLoss(SCECLRBase):
+#     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0, tau=0.1):
+#         super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+#         self.tau = tau
+#
+#     def forward(self, z):
+#         B = z.shape[0] // 2
+#         z = F.normalize(z, dim=1)
+#         zi, zj = z[0:B], z[B:2*B]
+#
+#         # TODO add var
+#         cossim = torch.matmul(zi, zj.T) / self.tau  # (B,E) @ (E,B) -> (N,B)
+#
+#         q = torch.exp(cossim)
+#
+#         Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
+#         q = q / Z
+#         # Attraction
+#         #cossim_ii = torch.diag(cossim).unsqueeze(1)  # (B,1)
+#         qii = torch.diag(q).unsqueeze(1)  # (B,1)
+#         #attractive_forces = cossim_ii   # log cancels exp
+#         attractive_forces = -torch.log(qii)   # log cancels exp
+#         #qii = torch.diag(q).unsqueeze(1)
+#
+#         # Repulsion
+#         qij = q[~torch.eye(B, dtype=torch.bool)]  # off diagonal
+#         #Z = torch.sum(q.detach(), dim=1, keepdim=True).requires_grad_(False)  # (B,B) -> (B,1)
+#         s_hat = self.N.pow(2) / self.s_inv
+#         repulsive_forces = torch.sum(q , dim=1, keepdim=True) * s_hat
+#
+#         loss = attractive_forces.mean() + repulsive_forces.mean()
+#         self.update_s(qii, qij)
+#         return loss
 
 
 class DotProdLoss(SCECLRBase):

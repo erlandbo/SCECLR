@@ -9,13 +9,14 @@ def write_summary():
         name = filepath.split("/")[-2]
         print(name)
         tb_log_path = "tb_logs/" + name
-        if os.path.exists(tb_log_path): continue
+        #if os.path.exists(tb_log_path): continue
 
         writer = SummaryWriter("tb_logs/" + name)
         with open(filepath, 'r') as f:
             for line in f.readlines():
-                metrics =  {l.split(":")[0] : float(l.split(":")[1]) for i, l in enumerate( line.split(" ") ) if l and i > 1}
-                print(metrics.keys())
+                print(line)
+                metrics = {l.split(":")[0] : float(l.split(":")[1]) for i, l in enumerate( line.split(" ") ) if l.strip() and i > 1}
+                #print(metrics.keys())
                 if metrics:
                     stage, epoch = int(metrics["Stage"]), int(metrics["Epoch"])
                     for k, v in metrics.items():

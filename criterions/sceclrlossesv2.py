@@ -52,7 +52,7 @@ class SCECLRBase(nn.Module):
         self.omega = self.omega + self.alpha * B
 
         # Repulsion
-        qij_hat = (torch.sum(qij.detach(), dim=1) + torch.sum(qji.detach(), dim=1)) / (2 * B)
+        qij_hat = (torch.sum(qij.detach(), dim=1) + torch.sum(qji.detach(), dim=1)) / (2 * 2 * B)
         self.xi = self.xi + torch.sum((1 - self.alpha) * qij_hat )
         self.omega = self.omega + (1 - self.alpha) * B
 
@@ -78,7 +78,7 @@ class CauchyLoss(SCECLRBase):
 
         qii = torch.diag(q_uv.clone())
 
-        q_uv.masked_fill(self_mask, 0.0)
+        q_uv.masked_fill(self_mask, 0.0)  # Pos mask
 
         q_uu.masked_fill(self_mask, 0.0)
         q_vv.masked_fill(self_mask, 0.0)

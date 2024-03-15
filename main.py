@@ -12,7 +12,7 @@ from criterions.sceclrlossesv1 import SCECLRV1Loss
 from criterions.sceclrlossesv2 import SCECLRV2Loss
 from criterions.tsimcnelosses import InfoNCELoss
 from logger_utils import update_pbar, update_log, initialize_logger, write_model
-from optimization import auto_lr, build_optimizer
+from optimization import auto_lr, build_optimizer, build_optimizer_epoch
 from criterions.criterion_utils import change_criterion
 
 parser = argparse.ArgumentParser(description='SCECLR')
@@ -72,11 +72,14 @@ def train_one_epoch(model, dataloader, criterion, optimizer, lr_schedule, device
 
     model.train()
 
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr_schedule[epoch + 1]
+
     running_loss = 0.0
     for batch_idx, batch in enumerate(dataloader):
 
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr_schedule[epoch * len(dataloader) + batch_idx]
+        # for param_group in optimizer.param_groups:
+        #     param_group['lr'] = lr_schedule[epoch * len(dataloader) + batch_idx]
 
         x1, x2, idx = batch
         x = torch.cat([x1, x2], dim=0).to(device)
@@ -153,6 +156,9 @@ def main():
     print(augmentation.augmentations)
     print(model)
 
+    print(args.mlp_hidden_features)
+    print(args.outfeatures)
+
     if args.checkpoint_path:
         checkpoint = torch.load(args.checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -162,7 +168,7 @@ def main():
 
         if stage == 1:
             model = change_model(model, projection_dim=2, device=device, freeze_layer="keeplast", change_layer="last")
-            #model = change_model(model, projection_dim=2, device=device, freeze_layer="mixer", change_layer="mlp")
+            # model = change_model(model, projection_dim=2, device=device, freeze_layer="mixer", change_layer="mlp")
 
             if args.change_metric:
                 criterion = change_criterion(criterion, device, args.change_metric, new_rho=args.change_rho, new_alpha=args.change_alpha)
@@ -171,12 +177,21 @@ def main():
             model = change_model(model, device=device, freeze_layer=None)
 
         base_lri = auto_lr(args.batchsize) if stage < 2 else auto_lr(args.batchsize) / 1000 if args.lr[stage] is None else args.lr[stage]
-        optimizer_i, lr_schedule_i = build_optimizer(
+        # optimizer_i, lr_schedule_i = build_optimizer(
+        #     model=model,
+        #     lr=base_lri,
+        #     warmup_epochs=args.warmupepochs[stage],
+        #     max_epochs=args.epochs[stage],
+        #     num_batches=len(dataloader),
+        #     lr_anneal=args.lr_anneal,
+        #     momentum=args.momentum,
+        #     weight_decay=args.weight_decay
+        # )
+        optimizer_i, lr_schedule_i = build_optimizer_epoch(
             model=model,
             lr=base_lri,
             warmup_epochs=args.warmupepochs[stage],
             max_epochs=args.epochs[stage],
-            num_batches=len(dataloader),
             lr_anneal=args.lr_anneal,
             momentum=args.momentum,
             weight_decay=args.weight_decay
@@ -197,7 +212,7 @@ def main():
                 stage=stage,
                 epoch=epoch,
                 epoch_loss=epoch_loss,
-                lr=lr_schedule_i[(epoch+1) * len(dataloader)-1],
+                lr=lr_schedule_i[epoch+1],
                 scores=scores,
                 buffer_vals=" ".join([f"{name}:{val.item()}" for (name, val) in criterion.named_buffers() if val.numel() < 2])
             )
