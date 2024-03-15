@@ -29,9 +29,9 @@ def evaluate(model, device, args):
     eval_transform = Augmentation(imgsize, mean, std, mode="test", num_views=1)
     # eval_transform = Augmentation(imgsize, mean, std, mode="eval", num_views=1)
     traindata.transform = testdata.transform = eval_transform
-    trainloader = DataLoader(traindata, batch_size=args.batchsize, shuffle=True)
+    trainloader = DataLoader(traindata, batch_size=args.batchsize, shuffle=True, pin_memory=True)
     # print(traindata.classes)
-    testloader = DataLoader(testdata, batch_size=args.batchsize, shuffle=False)
+    testloader = DataLoader(testdata, batch_size=args.batchsize, shuffle=False, pin_memory=True)
 
     Z_train, H_train, train_targets = data_features(model, trainloader, device)
     Z_test, H_test, test_targets = data_features(model, testloader, device)

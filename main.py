@@ -8,7 +8,7 @@ from data import Augmentation, SSLImageDataset
 from models import ResSCECLR, change_model
 from criterions.scelosses import SCELoss
 from criterions.sceclrlossesv1_real import SCECLRV1Loss
-from criterions.sceclrlossesv2 import SCECLRV2Loss
+from criterions.sceclrlossesv2_real import SCECLRV2Loss
 from criterions.tsimcnelosses import InfoNCELoss
 from logger_utils import update_pbar, update_log, initialize_logger, write_model
 from optimization import auto_lr, build_optimizer, build_optimizer_epoch
