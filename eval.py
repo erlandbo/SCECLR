@@ -58,8 +58,10 @@ def evaluate(model, device, args):
     # scores["mlp_score_h"] = mlp.score(H_test, test_targets)
     # temperature = 0.5
 
-    temps = [0.07, 0.2, 0.5]
-    knns = [20, 200]
+    #temps = [0.07, 0.2, 0.5]
+    temps = [0.5]
+    knns = [20]
+    #knns = [20, 200]
     for nn in knns:
         for temp in temps:
             top1, top5 = test(model, trainloader, testloader, k=nn, temperature=temp)

@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class SCECLRV2Loss(nn.Module):
+class SCECLRV2RealLoss(nn.Module):
     def __init__(self, metric, **kwargs):
         super().__init__()
         if metric == 'cauchy':
@@ -95,20 +95,22 @@ class CauchyLoss(SCECLRBase):
         attractive_forces = - torch.log(qii).mean()
 
         # Repulsion
-        s_hat = self.N.pow(1) / self.s_inv[feats_idx].unsqueeze(1)
-        #s_hat = self.s_inv[feats_idx].unsqueeze(1) / self.N.pow(1)
+        #s_hat = self.N.pow(1) / self.s_inv[feats_idx].unsqueeze(1)
+        s_hat = self.s_inv[feats_idx].unsqueeze(1) / self.N.pow(1)
+        moment = 0.9
+        #Qij = qij / ( torch.mean(qij.detach(), dim=1, keepdim=True) * moment + (1.0 - moment) * 1.0 / s_hat )
+        #Qji = qji / ( torch.mean(qji.detach(), dim=1, keepdim=True) * moment + (1.0 - moment) * 1.0 / s_hat )
+
+
+        # repulsive_forces_1 = torch.sum(Qij, dim=1, keepdim=True) / (2.0 * B)
+        # repulsive_forces_2 = torch.sum(Qji, dim=1, keepdim=True) / (2.0 * B)
+
         pos_sim = qii.unsqueeze(1).detach().clone().requires_grad_(False)  # detach() from computation graph
 
-        moment = 0.9
-        Qij = qij / ( ((torch.mean(qij.detach(), dim=1, keepdim=True) + pos_sim) * moment + (1.0 - moment) * 1.0 / s_hat) )
-        Qji = qji / ( ((torch.mean(qji.detach(), dim=1, keepdim=True) + pos_sim) * moment + (1.0 - moment) * 1.0 / s_hat) )
-        #Qij = qij / (( torch.mean(qij.detach(), dim=1, keepdim=True) * moment + (1.0 - moment) * s_hat ) * 2 * B)
-        #Qji = qji / (( torch.mean(qji.detach(), dim=1, keepdim=True) * moment + (1.0 - moment) * s_hat ) * 2 * B)
-
-
-        repulsive_forces_1 = torch.sum(Qij, dim=1, keepdim=True) / (2.0 * B)
-        repulsive_forces_2 = torch.sum(Qji, dim=1, keepdim=True) / (2.0 * B)
+        repulsive_forces_1 = torch.log( ((torch.mean(qij, dim=1, keepdim=True) + pos_sim) * moment + (1.0 - moment) * s_hat.detach()) * 2*B ) * 1.0 / moment
+        repulsive_forces_2 = torch.log( ((torch.mean(qji, dim=1, keepdim=True) + pos_sim) * moment + (1.0 - moment) * s_hat.detach()) * 2*B ) * 1.0 / moment
         repulsive_forces = ( repulsive_forces_1.mean() + repulsive_forces_2.mean() ) / 2.0
+
         # repulsive_forces = ( torch.sum(Qij, dim=1, keepdim=True).mean() + torch.sum(Qji, dim=1, keepdim=True).mean() ) / (2.0 * 2.0 * B)
 
         loss = attractive_forces + repulsive_forces
