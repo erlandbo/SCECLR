@@ -188,8 +188,10 @@ class CosineLoss(SCECLRBase):
         # Remove possim constant?
         pos_const = qii.unsqueeze(1).detach().clone().requires_grad_(False)  # detach() from computation graph
 
-        repulsive_forces_1 = torch.log( ((torch.sum(qij, dim=1, keepdim=True) + pos_const)/(2.0*B) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
-        repulsive_forces_2 = torch.log( ((torch.sum(qji, dim=1, keepdim=True) + pos_const)/(2.0*B) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
+        #repulsive_forces_1 = torch.log( ((torch.sum(qij, dim=1, keepdim=True) + pos_const)/(2.0*B) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
+        #repulsive_forces_2 = torch.log( ((torch.sum(qji, dim=1, keepdim=True) + pos_const)/(2.0*B) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
+        repulsive_forces_1 = torch.log( ((torch.sum(qij, dim=1, keepdim=True) )/(2.0*B) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
+        repulsive_forces_2 = torch.log( ((torch.sum(qji, dim=1, keepdim=True) )/(2.0*B) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
         repulsive_forces = ( repulsive_forces_1.mean() + repulsive_forces_2.mean() ) / 2.0
 
         loss = attractive_forces + repulsive_forces
