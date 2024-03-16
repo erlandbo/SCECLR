@@ -40,7 +40,8 @@ class SCECLRBase(nn.Module):
         #####################
         self.qii = qii.mean()
         self.qij = (qij.mean() + qji.mean()) / 2
-        # self.qcoeff = self.N.pow(2) / self.s_inv
+        self.qcoeff = torch.mean(self.s_inv) / self.N.pow(1)
+
         #######################
         B = feats_idx.size(0)
 
@@ -197,6 +198,12 @@ class CosineLoss(SCECLRBase):
         loss = attractive_forces + repulsive_forces
 
         self.update_s(qii, qij, qji, feats_idx)
+
+        # print("qij", torch.mean(qij,dim=1).mean())
+        # l = torch.mean( torch.sum(qij, dim=1, keepdim=True) / (2.0*B))
+        # l2 = torch.mean(s_inv_hat )
+        # print("qij", l)
+        # print("sinv", l2)
 
         return loss
 

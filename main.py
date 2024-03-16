@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler
 import argparse
 
-from eval import evaluate, visualize_feats
+from eval import evaluate, visualize_feats, test
 from data_utils import dataset_x
 from data import Augmentation, SSLImageDataset
 from models import ResSCECLR, change_model
@@ -208,7 +208,7 @@ def main():
 
             scores = None
             if epoch % args.eval_epoch == 0:
-                scores = evaluate(model, memory_loader, testloader)
+                scores = test(model, memory_loader, testloader)
                 if model.qprojector.mlp[-1].weight.shape[0] == 2:
                     visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
 

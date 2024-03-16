@@ -103,9 +103,12 @@ def test(net, train_loader, test_data_loader):
         # loop test data to predict the label by weighted knn search
 
         temps = [0.07, 0.5, 0.2]
+        #temps = [0.5]
         nns = [20, 200]
         for k in nns:
             for temperature in temps:
+                #k = 20
+                #temperature = 0.5
                 total_top1, total_top5, total_num = 0.0, 0.0, 0,
 
                 for data, target in test_data_loader:
@@ -136,6 +139,6 @@ def test(net, train_loader, test_data_loader):
                     #                         .format(epoch, epochs, total_top1 / total_num * 100, total_top5 / total_num * 100))
                     # import pdb; pdb.set_trace()
                 scores[f"top1_k{k}_temp{temperature}"] = total_top1 / total_num
-                scores[f"top5_k{k}_temp{temperature}"] = total_top5 / total_num
+                #scores[f"top5_k{k}_temp{temperature}"] = total_top5 / total_num
 
     return scores

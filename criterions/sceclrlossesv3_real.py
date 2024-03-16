@@ -123,7 +123,7 @@ class GaussianLoss(SCECLRBase):
 
 class CosineLoss(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=2.0):
-        super().__init__(N=60_000, rho=rho, alpha=alpha, S_init=S_init)
+        super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
         self.temp = 0.5
 
     def forward(self, feats):
