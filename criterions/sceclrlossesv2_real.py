@@ -53,7 +53,7 @@ class SCECLRBase(nn.Module):
         self.omega = self.omega + self.alpha * B
 
         # Repulsion
-        qij_hat = (torch.sum(qij.detach(), dim=1) + torch.sum(qji.detach(), dim=1)) / (2 * 2 * B)
+        qij_hat = (torch.sum(qij.detach(), dim=1) + torch.sum(qji.detach(), dim=1)) / (2 * 2 * B - 2)  # Note posmask
         self.xi = self.xi + torch.sum((1 - self.alpha) * qij_hat )
         self.omega = self.omega + (1 - self.alpha) * B
 
@@ -171,12 +171,13 @@ class CosineLoss(SCECLRBase):
 
         qii = torch.diag(q_uv.clone())
 
-        q_uv.masked_fill(self_mask, 0.0)  # Pos mask !
+        # TODO
+        # q_uv.masked_fill(self_mask, 0.0)  # Pos mask !
 
         q_uu.masked_fill(self_mask, 0.0)
         q_vv.masked_fill(self_mask, 0.0)
 
-        qij = torch.cat([q_uu, q_uv], dim=1)   # (B,B), (B,B) -> (B, 2B)
+        qij = torch.cat([q_uu, q_uv], dim=1)    # (B,B), (B,B) -> (B, 2B)
         qji = torch.cat([q_uv.T, q_vv], dim=1)  # (B,B), (B,B) -> (B, 2B)
 
         # Attraction
@@ -197,7 +198,13 @@ class CosineLoss(SCECLRBase):
 
         loss = attractive_forces + repulsive_forces
 
-        self.update_s(qii, qij, qji, feats_idx)
+        with torch.no_grad():
+            q_uv2 = q_uv.clone()
+            q_uv2.masked_fill(self_mask, 0.0)  # Pos mask !
+            qij2 = torch.cat([q_uu, q_uv2], dim=1)    # (B,B), (B,B) -> (B, 2B)
+            qji2 = torch.cat([q_uv2.T, q_vv], dim=1)  # (B,B), (B,B) -> (B, 2B)
+
+        self.update_s(qii, qij2, qji2, feats_idx)
 
         # print("qij", torch.mean(qij,dim=1).mean())
         # l = torch.mean( torch.sum(qij, dim=1, keepdim=True) / (2.0*B))

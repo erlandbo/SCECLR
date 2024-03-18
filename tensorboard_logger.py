@@ -1,10 +1,14 @@
 import os
 import glob
 from torch.utils.tensorboard import SummaryWriter
+import argparse
+
+parser = argparse.ArgumentParser(description='tb_logs_writer')
+parser.add_argument('--logdir', default="logs", type=str)
 
 
-def write_summary():
-    for filepath in glob.glob('logs/*/train.log'):
+def write_summary(logpath="logs"):
+    for filepath in glob.glob(f'{logpath}/*/train.log'):
         print(filepath)
         name = filepath.split("/")[-2]
         print(name)
@@ -25,4 +29,6 @@ def write_summary():
 
 
 if __name__ == '__main__':
-    write_summary()
+    args = parser.parse_args()
+
+    write_summary(args.logdir)
