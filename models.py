@@ -123,7 +123,7 @@ class QProjector(nn.Module):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(in_features=in_features, out_features=hidden_features, bias=False),
-            nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
+            # nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
             nn.ReLU() if activation == "ReLU" else nn.GELU(),
             nn.Linear(in_features=hidden_features, out_features=out_features)
         ) if hidden_mlp else nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features))
@@ -186,6 +186,7 @@ def change_model(model, device, projection_dim=2, freeze_layer=None, change_laye
     if change_layer == "last":
         in_features = model.qprojector.mlp[-1].weight.shape[1]
         model.qprojector.mlp[-1] = nn.Linear(in_features=in_features, out_features=projection_dim).to(device)
+        nn.init.normal_(model.qprojector.mlp[-1].weight, std=1.0)
         # TODO different inits?
     elif change_layer == "mlp":
         model.qprojector = QProjector.create_new_model(model.qprojector, projection_dim).to(device)
