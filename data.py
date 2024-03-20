@@ -1,6 +1,8 @@
 from torch.utils.data import Dataset
 import torch
-from torchvision import transforms
+import torchvision
+import torchvision.transforms as transforms
+import write_ffcv
 
 
 class SSLImageDataset(Dataset):
@@ -11,7 +13,7 @@ class SSLImageDataset(Dataset):
     def __getitem__(self, idx):
         x, y = self.dataset[idx]
         xa_i, xa_j = self.transform(x)
-        return xa_i, xa_j, idx
+        return xa_i, y, idx, xa_j
 
     def __len__(self):
         return len(self.dataset)

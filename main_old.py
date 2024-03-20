@@ -13,8 +13,6 @@ from criterions.tsimcnelosses import InfoNCELoss
 from logger_utils import update_pbar, update_log, initialize_logger, write_model
 from optimization import auto_lr, build_optimizer, build_optimizer_epoch
 from criterions.criterion_utils import change_criterion
-from ffcv_ssl import build_ffcv_sslloader, build_ffcv_nonssl_loader
-
 
 parser = argparse.ArgumentParser(description='SCECLR')
 
@@ -58,10 +56,6 @@ parser.add_argument('--imgsize', nargs=2, default=(32, 32), type=int)
 parser.add_argument('--augmode', default='train', type=str, choices=["train", "eval", "test"], help=
     "augmentation train mode simclr, eval mode random resize-crop flip , test mode nothing")
 
-
-parser.add_argument('--use_ffcv', default=False, action=argparse.BooleanOptionalAction)
-parser.add_argument('--use_fp16', default=False, action=argparse.BooleanOptionalAction)
-
 # Logging
 parser.add_argument('--mainpath', default="./", type=str, help="path to store logs from experiments")
 
@@ -74,33 +68,27 @@ parser.add_argument('--change_rho', default=None, type=float, help='Set constant
 parser.add_argument('--change_alpha', default=None, type=float)
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, lr_schedule, epoch, scaler):
+def train_one_epoch(model, dataloader, criterion, optimizer, lr_schedule, device, epoch):
 
     model.train()
 
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr_schedule[epoch]
+        param_group['lr'] = lr_schedule[epoch + 1]
 
     running_loss = 0.0
     for batch_idx, batch in enumerate(dataloader):
-        x1, target, idx, x2 = batch
-        x = torch.cat([x1, x2], dim=0).cuda(non_blocking=True)
-        if scaler is None:
-            z, _ = model(x)
-            optimizer.zero_grad()
-            loss = criterion(z, idx)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        else:
-            with torch.autocast(device_type='cuda', dtype=torch.float16):
-                z, _ = model(x)
-                loss = criterion(z, idx)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            running_loss += loss.item()
+        # for param_group in optimizer.param_groups:
+        #     param_group['lr'] = lr_schedule[epoch * len(dataloader) + batch_idx]
+
+        x1, x2, idx = batch
+        x = torch.cat([x1, x2], dim=0).to(device)
+        z, _ = model(x)
+        optimizer.zero_grad()
+        loss = criterion(z, idx)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
 
         update_pbar(batch_idx, num_batches=len(dataloader))
 
@@ -116,39 +104,25 @@ def main():
 
     train_basedataset, test_basedataset, _ , imgsize, mean, std = dataset_x(args.basedataset)
 
-    if not args.use_ffcv:
-        train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
-        train_dataset = SSLImageDataset(train_basedataset, train_augmentation)
-
-        trainloader = DataLoader(
-            train_dataset,
-            batch_size=args.batchsize,
-            shuffle=True,
-            num_workers=args.numworkers,
-            pin_memory=True
-        )
-
-        memory_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
-        test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
-        memory_dataset.transform = test_dataset.transform = test_augmentation
-        memory_loader = DataLoader(memory_dataset, batch_size=args.batchsize, shuffle=True, pin_memory=True)
-        testloader = DataLoader(test_dataset, batch_size=args.batchsize, shuffle=False, pin_memory=True)
-    else:
-        trainloader = build_ffcv_sslloader(
-            write_path=f"output/{args.basedataset}/trainds.beton",
-            mean=mean,
-            std=std,
-            imgsize=imgsize,
-            batchsize=args.batchsize,
-            numworkers=args.numworkers,
-            mode="train"
-        )
-
+    train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
+    train_dataset = SSLImageDataset(train_basedataset, train_augmentation)
+    trainloader = DataLoader(
+        train_dataset,
+        batch_size=args.batchsize,
+        shuffle=True,
+        num_workers=args.numworkers,
+        pin_memory=True
+    )
+    memory_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
+    test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
+    memory_dataset.transform = test_dataset.transform = test_augmentation
+    memory_loader = DataLoader(memory_dataset, batch_size=args.batchsize, shuffle=True, pin_memory=True)
+    testloader = DataLoader(test_dataset, batch_size=args.batchsize, shuffle=False, pin_memory=True)
 
     if args.criterion == "sce":
         criterion = SCELoss(
             metric=args.metric,
-            N=len(train_basedataset),
+            N=len(train_dataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
@@ -156,7 +130,7 @@ def main():
     if args.criterion == "sceclrv1":
         criterion = SCECLRV1Loss(
             metric=args.metric,
-            N=len(train_basedataset),
+            N=len(train_dataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
@@ -164,7 +138,7 @@ def main():
     elif args.criterion == "sceclrv2":
         criterion = SCECLRV2Loss(
             metric=args.metric,
-            N=len(train_basedataset),
+            N=len(train_dataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
@@ -185,11 +159,11 @@ def main():
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
-    #print(train_augmentation.augmentations)
+    print(train_augmentation.augmentations)
     print(model)
 
-    #print(args.mlp_hidden_features)
-    #print(args.outfeatures)
+    print(args.mlp_hidden_features)
+    print(args.outfeatures)
 
     if args.checkpoint_path:
         checkpoint = torch.load(args.checkpoint_path, map_location=device)
