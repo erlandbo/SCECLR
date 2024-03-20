@@ -179,11 +179,13 @@ class CosineLoss(SCECLRBase):
         with torch.no_grad():
             Z = ( ( (torch.sum(q.detach(), dim=1, keepdim=True) + qii.detach()) / (2.0*B) * moment + (1.0 - moment) * s_inv_hat ) * 2*B ).detach().clone().requires_grad_(False)
 
-        loss = - torch.log(qii / Z).mean()
+        # loss = - torch.log(qii / Z).mean()
+
+        loss = qii / Z
 
         self.update_s(qii[0:B], q[0:B], q[B:2*B], feats_idx)
 
-        return loss
+        return loss.mean()
 
 
 class DotProdLoss(SCECLRBase):

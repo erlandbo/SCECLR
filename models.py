@@ -123,7 +123,7 @@ class QProjector(nn.Module):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(in_features=in_features, out_features=hidden_features, bias=False),
-            # nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
+            nn.BatchNorm1d(hidden_features) if norm_layer else nn.Identity(),
             nn.ReLU() if activation == "ReLU" else nn.GELU(),
             nn.Linear(in_features=hidden_features, out_features=out_features)
         ) if hidden_mlp else nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features))

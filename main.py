@@ -25,6 +25,7 @@ parser.add_argument('--zero_init_residual', default=False, action=argparse.Boole
 parser.add_argument('--mlp_hidden_features', default=1024, type=int)
 parser.add_argument('--outfeatures', default=2, type=int, help='Latent space features')
 parser.add_argument('--norm_layer', default=True, action=argparse.BooleanOptionalAction, help='whether to use batch-normalization every layers')
+parser.add_argument('--norm_mlp_layer', default=True, action=argparse.BooleanOptionalAction, help='whether to use batch-normalization last mlp layer')
 parser.add_argument('--hidden_mlp', default=True, action=argparse.BooleanOptionalAction, help='One or none MLP hidden layers')
 parser.add_argument('--device', default='cuda', type=str, choices=["cuda", "cpu"])
 
@@ -112,7 +113,7 @@ def main():
         num_workers=args.numworkers,
         pin_memory=True
     )
-    memory_dataset, test_dataset, _ , imgsize, mean, std = dataset_x(args.basedataset)
+    memory_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
     test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
     memory_dataset.transform = test_dataset.transform = test_augmentation
     memory_loader = DataLoader(memory_dataset, batch_size=args.batchsize, shuffle=True, pin_memory=True)
@@ -154,7 +155,7 @@ def main():
         zero_init_residual=args.zero_init_residual,
         mlp_hidden_features=args.mlp_hidden_features,
         mlp_outfeatures=args.outfeatures,
-        norm_layer=args.norm_layer,
+        norm_layer=args.norm_mlp_layer,
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
@@ -208,7 +209,7 @@ def main():
 
             scores = None
             if epoch % args.eval_epoch == 0:
-                scores = test(model, memory_loader, testloader)
+                scores = test(model, memory_loader, testloader, num_classes)
                 if model.qprojector.mlp[-1].weight.shape[0] == 2:
                     visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
 

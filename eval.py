@@ -82,11 +82,11 @@ def visualize_feats(model, stage, epoch, device, args):
 ########################################################
 # Copied from https://github.com/leftthomas/SimCLR/blob/master/main.py
 # test for one epoch, use weighted knn to find the most similar images' label to assign the test image
-def test(net, train_loader, test_data_loader):
+def test(net, train_loader, test_data_loader, num_classes):
     net.eval()
 
     scores = {}
-    c = 10
+    c = num_classes
     feature_bank, feature_labels = [], []
     with torch.no_grad():
         # generate feature bank
