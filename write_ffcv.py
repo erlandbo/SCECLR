@@ -4,6 +4,7 @@ import torch
 from data_utils import dataset_x
 import argparse
 from torch.utils.data import Dataset
+import os
 
 # Use FFCV
 
@@ -16,6 +17,9 @@ def write_dataset(basedataset):
 
     train_basedataset = FFCVSSLImageDataset(train_basedataset)
     test_basedataset = FFCVSSLImageDataset(test_basedataset)
+
+    if not os.path.exists(f'./output/{basedataset}'):
+        os.makedirs(f'./output/{basedataset}')
 
     # Your dataset (`torch.utils.data.Dataset`) of (image, label) pairs
     write_path_train = f'./output/{basedataset}/trainds.beton'

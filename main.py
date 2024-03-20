@@ -13,7 +13,7 @@ from criterions.tsimcnelosses import InfoNCELoss
 from logger_utils import update_pbar, update_log, initialize_logger, write_model
 from optimization import auto_lr, build_optimizer, build_optimizer_epoch
 from criterions.criterion_utils import change_criterion
-from ffcv_ssl import build_ffcv_sslloader, build_ffcv_nonssl_loader
+from ffcv_ssl import build_ffcv_sslloader, build_ffcv_nonsslloader
 
 
 parser = argparse.ArgumentParser(description='SCECLR')
@@ -144,6 +144,25 @@ def main():
             mode="train"
         )
 
+        memory_loader = build_ffcv_nonsslloader(
+            write_path=f"output/{args.basedataset}/trainds.beton",
+            mean=mean,
+            std=std,
+            imgsize=imgsize,
+            batchsize=args.batchsize,
+            numworkers=args.numworkers,
+            mode="train"
+        )
+        testloader = build_ffcv_nonsslloader(
+            write_path=f"output/{args.basedataset}/testds.beton",
+            mean=mean,
+            std=std,
+            imgsize=imgsize,
+            batchsize=args.batchsize,
+            numworkers=args.numworkers,
+            mode="test"
+        )
+
 
     if args.criterion == "sce":
         criterion = SCELoss(
@@ -228,10 +247,13 @@ def main():
             momentum=args.momentum,
             weight_decay=args.weight_decay
         )
+
+        scaler = torch.cuda.amp.GradScaler() if args.use_fp16 else None
+
         write_model(model, args)
 
-        for epoch in range(0, args.epochs[stage]):
-            epoch_loss = train_one_epoch(model, trainloader, criterion, optimizer_i, lr_schedule_i, device, epoch)
+        for epoch in range(1, args.epochs[stage] + 1):
+            epoch_loss = train_one_epoch(model, trainloader, criterion, optimizer_i, lr_schedule_i, device, epoch, scaler)
 
             scores = None
             if epoch % args.eval_epoch == 0:
@@ -244,7 +266,7 @@ def main():
                 stage=stage,
                 epoch=epoch,
                 epoch_loss=epoch_loss,
-                lr=lr_schedule_i[epoch+1],
+                lr=lr_schedule_i[epoch],
                 scores=scores,
                 buffer_vals=" ".join([f"{name}:{val.item()}" for (name, val) in criterion.named_buffers() if val.numel() < 2])
             )

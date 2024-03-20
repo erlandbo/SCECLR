@@ -56,22 +56,22 @@ def build_ffcv_sslloader(write_path, imgsize, mean, std, batchsize, numworkers, 
     MEAN = np.array(mean) * 255
     STD = np.array(std) * 255
     image_pipeline1 = [
-        ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.4, 1)),
+        ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.2, 1)),
         ffcv.transforms.RandomGrayscale(seed=0),
         ffcv.transforms.ToTensor(),
         ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
         ffcv.transforms.ToTorchImage(),
-        DivideImageBy255(torch.float32),
         ffcv.transforms.NormalizeImage(MEAN, STD, np.float32),
+        DivideImageBy255(torch.float32),
     ]
     image_pipeline2 = [
-        ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.4, 1)),
+        ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.2, 1)),
         ffcv.transforms.RandomGrayscale(seed=0),
         ffcv.transforms.ToTensor(),
         ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
         ffcv.transforms.ToTorchImage(),
-        DivideImageBy255(torch.float32),
         ffcv.transforms.NormalizeImage(MEAN, STD, np.float32),
+        DivideImageBy255(torch.float32),
     ]
 
     label_pipeline = [
@@ -113,8 +113,8 @@ def build_ffcv_nonsslloader(write_path, imgsize, mean, std, batchsize, numworker
         ffcv.transforms.ToTensor(),
         ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
         ffcv.transforms.ToTorchImage(),
-        DivideImageBy255(torch.float32),
         ffcv.transforms.NormalizeImage(MEAN, STD, np.float32),
+        DivideImageBy255(torch.float32),
     ]
 
     label_pipeline = [
