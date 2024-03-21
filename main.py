@@ -52,8 +52,6 @@ parser.add_argument('--s_init', default=2.0, type=float)
 # Data
 parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100"])
 parser.add_argument('--imgsize', nargs=2, default=(32, 32), type=int)
-parser.add_argument('--augmode', default='train', type=str, choices=["train", "eval", "test"], help=
-    "augmentation train mode simclr, eval mode random resize-crop flip , test mode nothing")
 
 parser.add_argument('--use_ffcv', default=False, action=argparse.BooleanOptionalAction)
 parser.add_argument('--use_fp16', default=False, action=argparse.BooleanOptionalAction)
@@ -169,7 +167,7 @@ def main():
             model = change_model(model, device=device, freeze_layer=None)
 
         print(model)
-        print(f"--Start training stage {stage} Time {time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())}")
+        print("Starting training stage {} Time {}".format(stage, time.strftime("%Y_%m_%d_%H_%M_%S")))
         start_time_training = time.time()
 
         base_lr = auto_lr(args.batchsize) if stage < 2 else auto_lr(args.batchsize) / 1000 if args.lr[stage] is None else args.lr[stage]
@@ -211,10 +209,12 @@ def main():
 
             stats = {"loss": epoch_loss, "lr": lr_schedule[epoch]}
 
-            log_str = f'Time:{time.time() - start_time_epoch} Stage:{stage} Epoch:{epoch} LR:{lr_schedule[epoch]} Loss:{epoch_loss}'
+            log_str = f'Stage:{stage} Epoch:{epoch} LR:{lr_schedule[epoch]} Loss:{epoch_loss} Epoch completed:{time.time() - start_time_epoch} seconds'
             logger.info(log_str)
 
-        print(f"--Completed training stage {stage} Time {time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())} Training took {time.time()-start_time_training} seconds")
+            print(log_str)
+
+        print("Completed training stage {} Time {} Training took {} seconds".format(stage, time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime()), time.time()-start_time_training))
 
         torch.save({
             "model_state_dict": model.state_dict(),
