@@ -13,7 +13,6 @@ def update_pbar(batch_idx, num_batches):
 
 
 def update_log(logger, stage, epoch, epoch_loss, lr, scores=None, buffer_vals=""):
-    # TODO make better
     print_str = 'Time:{} Stage:{} Epoch:{} LR:{} Loss:{} {}'.format(
             time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
             stage,
@@ -48,9 +47,8 @@ def initialize_logger(args):
     return logging
 
 
-# TODO serialize
 def store_hyperparameters(args):
-    with open(args.exppath + "/parameters.txt", "w") as f:
+    with open(args.exppath + "/hyperparameters.txt", "w") as f:
         for key, value in args.__dict__.items():
             f.write(f"{key}: {value}\n")
 

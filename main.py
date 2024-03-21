@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler
 import argparse
 
-from eval import evaluate, visualize_feats, test
+from eval import evaluate, visualize_feats, test, logreg_knn
 from data_utils import dataset_x
 from data import Augmentation, SSLImageDataset
 from models import ResSCECLR, change_model
@@ -102,7 +102,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, lr_schedule, epoch,
             scaler.update()
             running_loss += loss.item()
 
-        update_pbar(batch_idx, num_batches=len(dataloader))
+        # update_pbar(batch_idx, num_batches=len(dataloader))
 
     return running_loss / len(dataloader)
 
@@ -112,21 +112,15 @@ def main():
 
     logger = initialize_logger(args)
 
-    device = torch.device("cuda:0" if args.device=="cuda" else "cpu")
+    device = torch.device("cuda:0")
 
-    train_basedataset, test_basedataset, _ , imgsize, mean, std = dataset_x(args.basedataset)
+    train_basedataset, test_basedataset, num_classes, imgsize, mean, std = dataset_x(args.basedataset)
 
     if not args.use_ffcv:
         train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
         train_dataset = SSLImageDataset(train_basedataset, train_augmentation)
 
-        trainloader = DataLoader(
-            train_dataset,
-            batch_size=args.batchsize,
-            shuffle=True,
-            num_workers=args.numworkers,
-            pin_memory=True
-        )
+        trainloader = DataLoader(train_dataset,batch_size=args.batchsize,shuffle=True,num_workers=args.numworkers,pin_memory=True)
 
         memory_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
         test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
@@ -162,7 +156,6 @@ def main():
             numworkers=args.numworkers,
             mode="test"
         )
-
 
     if args.criterion == "sce":
         criterion = SCELoss(
@@ -204,43 +197,20 @@ def main():
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
-    #print(train_augmentation.augmentations)
-    print(model)
-
-    #print(args.mlp_hidden_features)
-    #print(args.outfeatures)
-
-    if args.checkpoint_path:
-        checkpoint = torch.load(args.checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        criterion.load_state_dict(checkpoint["criterion_state_dict"])
-
     for stage in range(args.start_stage, 3):
 
         if stage == 1:
             model = change_model(model, projection_dim=2, device=device, freeze_layer="keeplast", change_layer="last")
             # model = change_model(model, projection_dim=2, device=device, freeze_layer="mixer", change_layer="mlp")
 
-            if args.change_metric:
-                criterion = change_criterion(criterion, device, args.change_metric, new_rho=args.change_rho, new_alpha=args.change_alpha)
-
         elif stage == 2:
             model = change_model(model, device=device, freeze_layer=None)
 
-        base_lri = auto_lr(args.batchsize) if stage < 2 else auto_lr(args.batchsize) / 1000 if args.lr[stage] is None else args.lr[stage]
-        # optimizer_i, lr_schedule_i = build_optimizer(
-        #     model=model,
-        #     lr=base_lri,
-        #     warmup_epochs=args.warmupepochs[stage],
-        #     max_epochs=args.epochs[stage],
-        #     num_batches=len(dataloader),
-        #     lr_anneal=args.lr_anneal,
-        #     momentum=args.momentum,
-        #     weight_decay=args.weight_decay
-        # )
-        optimizer_i, lr_schedule_i = build_optimizer_epoch(
+        base_lr = auto_lr(args.batchsize) if stage < 2 else auto_lr(args.batchsize) / 1000 if args.lr[stage] is None else args.lr[stage]
+
+        optimizer, lr_schedule = build_optimizer_epoch(
             model=model,
-            lr=base_lri,
+            lr=base_lr,
             warmup_epochs=args.warmupepochs[stage],
             max_epochs=args.epochs[stage],
             lr_anneal=args.lr_anneal,
@@ -253,13 +223,37 @@ def main():
         write_model(model, args)
 
         for epoch in range(1, args.epochs[stage] + 1):
-            epoch_loss = train_one_epoch(model, trainloader, criterion, optimizer_i, lr_schedule_i, device, epoch, scaler)
+            epoch_loss = train_one_epoch(model, trainloader, criterion, optimizer, lr_schedule, epoch, scaler)
 
-            scores = None
+            stats = {"loss": epoch_loss, "lr": lr_schedule[epoch]}
+
             if epoch % args.eval_epoch == 0:
-                scores = test(model, memory_loader, testloader, num_classes)
+
                 if model.qprojector.mlp[-1].weight.shape[0] == 2:
-                    visualize_feats(model, stage=stage, epoch=epoch, device=device, args=args)
+                    visualize_feats(model, memory_loader, testloader, stage=stage, epoch=epoch, args=args)
+                    val_knn_acc = run_knn_classifier(
+                        model,
+                        memory_loader,
+                        testloader,
+                        num_classes,
+                        feature_type="latent",
+                        distancefx=args.val_distancefx,
+                        k=args.knearest_neighbors,
+                        temperature=args.val_temperature
+                    )
+                    stats[f"val_knn_acc_k{args.knearest_neighbors}_temp{args.val_temperatur}"] = val_knn_acc
+                else:
+                    val_knn_acc = run_knn_classifier(
+                        model,
+                        memory_loader,
+                        testloader,
+                        num_classes,
+                        feature_type="hidden",
+                        distancefx=args.val_distancefx,
+                        k=args.knearest_neighbors,
+                        temperature=args.val_temperature
+                    )
+                    stats[f"val_knn_acc_k{args.knearest_neighbors}_temp{args.val_temperatur}"] = val_knn_acc
 
             update_log(
                 logger,
