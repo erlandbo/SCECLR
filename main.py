@@ -95,6 +95,7 @@ def main():
             numworkers=args.numworkers,
             mode="train"
         )
+
     if args.criterion == "sce":
         criterion = SCELoss(
             metric=args.metric,

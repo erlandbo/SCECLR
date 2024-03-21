@@ -27,12 +27,12 @@ def write_ssl_dataset(basedataset):
     # Pass a type for each data field
     writer = DatasetWriter(write_path_train, {
         # Tune options to optimize dataset size, throughput at train-time
-        'image': RGBImageField(max_resolution=max(imgsize)),
+        'image': RGBImageField(), #max_resolution=max(imgsize)),
         'label': IntField(),
         'idx': IntField()
     })
     # Write dataset
-    writer.from_indexed_dataset(train_basedataset)
+    writer.from_indexed_dataset(train_basedataset, shuffle_indices=True)
 
     ####################################
 
@@ -40,12 +40,12 @@ def write_ssl_dataset(basedataset):
     # Pass a type for each data field
     writer = DatasetWriter(write_path_test, {
         # Tune options to optimize dataset size, throughput at train-time
-        'image': RGBImageField(max_resolution=max(imgsize)),
+        'image': RGBImageField(), #max_resolution=max(imgsize)),
         'label': IntField(),
         'idx': IntField()
     })
     # Write dataset
-    writer.from_indexed_dataset(test_basedataset)
+    writer.from_indexed_dataset(test_basedataset, shuffle_indices=True)
 
 
 class FFCVSSLImageDataset(Dataset):
@@ -76,7 +76,7 @@ def write_nonssl_dataset(basedataset):
         'label': IntField(),
     })
     # Write dataset
-    writer.from_indexed_dataset(train_basedataset)
+    writer.from_indexed_dataset(train_basedataset, chunksize=1000)
 
     ####################################
 
@@ -88,7 +88,7 @@ def write_nonssl_dataset(basedataset):
         'label': IntField(),
     })
     # Write dataset
-    writer.from_indexed_dataset(test_basedataset)
+    writer.from_indexed_dataset(test_basedataset, chunksize=1000)
 
 
 def main():

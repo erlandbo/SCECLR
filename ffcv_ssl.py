@@ -57,9 +57,9 @@ def build_ffcv_sslloader(write_path, imgsize, mean, std, batchsize, numworkers, 
     # MEAN = np.array(mean)
     # STD = np.array(std)
     image_pipeline1 = [
-        ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.2, 1)),
+        ffcv.transforms.RandomResizedCrop(output_size=imgsize, scale=(0.2, 1.0), ratio=(0.75, 1.3333333333333333)),
         ffcv.transforms.RandomHorizontalFlip(flip_prob=0.5),
-        ffcv.transforms.RandomColorJitter(jitter_prob=0.8,brightness=0.4,contrast=0.4,saturation=0.4,hue=0.1),
+        ffcv.transforms.RandomColorJitter(jitter_prob=0.8, brightness=0.4,contrast=0.4,saturation=0.4,hue=0.1),
         ffcv.transforms.RandomGrayscale(gray_prob=0.2),
         ffcv.transforms.ToTensor(),
         #ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
@@ -69,7 +69,7 @@ def build_ffcv_sslloader(write_path, imgsize, mean, std, batchsize, numworkers, 
         torchvision.transforms.Normalize(mean, std)
     ]
     image_pipeline2 = [
-        ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.2, 1)),
+        ffcv.transforms.RandomResizedCrop(output_size=imgsize, scale=(0.2, 1.0), ratio=(0.75, 1.3333333333333333)),
         ffcv.transforms.RandomHorizontalFlip(flip_prob=0.5),
         ffcv.transforms.RandomColorJitter(jitter_prob=0.8, brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
         ffcv.transforms.RandomGrayscale(gray_prob=0.2),
@@ -106,7 +106,7 @@ def build_ffcv_sslloader(write_path, imgsize, mean, std, batchsize, numworkers, 
         # We need this custom mapper to map the additional pipeline to
         # the label used in the dataset (image in this case)
         custom_field_mapper={"image2": "image"},
-        order=ffcv.loader.OrderOption.QUASI_RANDOM if mode == 'train' else OrderOption.SEQUENTIAL,
+        order=ffcv.loader.OrderOption.RANDOM, #ffcv.loader.OrderOption.QUASI_RANDOM,
         drop_last=False,
         os_cache=False,
     )
