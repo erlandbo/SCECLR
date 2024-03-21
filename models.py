@@ -3,6 +3,7 @@
 
 import torch
 from torch import nn
+import inspect
 
 
 class ResBlock(nn.Module):
@@ -35,7 +36,7 @@ class ResNet(nn.Module):
         self.conv_1 = nn.Sequential(
             nn.Conv2d(in_channels, self.channels, kernel_size=7, stride=2, padding=3, bias=False) if first_conv else \
                 nn.Conv2d(in_channels, self.channels, kernel_size=3, stride=1, padding=1, bias=False),
-            # nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if first_maxpool else nn.MaxPool2d(kernel_size=1, stride=1, padding=0),
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if first_maxpool else nn.MaxPool2d(kernel_size=1, stride=1),
             nn.BatchNorm2d(self.channels),
             nn.ReLU() if activation == "ReLU" else nn.GELU()
         )
@@ -155,7 +156,7 @@ class ResSCECLR(nn.Module):
                  zero_init_residual=False,
                  mlp_hidden_features=1024,
                  mlp_outfeatures=128,
-                 norm_layer=True,
+                 norm_mlp_layer=True,
                  hidden_mlp=True
                  ):
         super().__init__()
@@ -171,7 +172,7 @@ class ResSCECLR(nn.Module):
             hidden_features=mlp_hidden_features,
             out_features=mlp_outfeatures,
             activation=activation,
-            norm_layer=norm_layer,
+            norm_layer=norm_mlp_layer,
             hidden_mlp=hidden_mlp
         )
 
@@ -205,6 +206,13 @@ def change_model(model, device, projection_dim=2, freeze_layer=None, change_laye
         model.requires_grad_(True)
 
     return model
+
+
+def build_model_from_hparams(hparams):
+    valid_hparams =  list(inspect.signature(ResSCECLR).parameters.keys())
+    hparams = {name: value for name, value in hparams.items() if name in valid_hparams}
+    print(hparams)
+    return ResSCECLR(**hparams)
 
 
 if __name__ == "__main__":

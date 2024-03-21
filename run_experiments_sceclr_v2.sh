@@ -1,1 +1,1 @@
-python main.py --use_ffcv --basedataset cifar10 --outfeatures 256 --mlp_hidden_features 2048 --eval_epoch 10 --batchsize 32 --rho 0.1 --epochs 1001 0 0 --criterion sceclrv2 --alpha 0.01 --numworkers 20 --metric cosine --s_init 1.0 --lr_anneal cosine_anneal --weight_decay 5.0e-4
+python main.py --no-use_ffcv --basedataset cifar10 --mlp_outfeatures 256 --mlp_hidden_features 2048 --eval_epoch 10 --batchsize 1024 --rho 0.1 --epochs 1 0 0 --criterion sceclrv2 --alpha 0.01 --numworkers 20 --metric cosine --s_init 1.0 --lr_anneal cosine_anneal --weight_decay 5.0e-4

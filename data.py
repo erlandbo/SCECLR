@@ -1,8 +1,5 @@
 from torch.utils.data import Dataset
-import torch
-import torchvision
 import torchvision.transforms as transforms
-import write_ffcv
 
 
 class SSLImageDataset(Dataset):

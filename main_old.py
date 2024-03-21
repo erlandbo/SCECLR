@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler
 import argparse
 
-from eval import evaluate, visualize_feats, test
+from eval_knn import evaluate, visualize_feats, test
 from data_utils import dataset_x
 from data import Augmentation, SSLImageDataset
 from models import ResSCECLR, change_model
