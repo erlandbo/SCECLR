@@ -1,0 +1,1 @@
+python main.py --no-norm_mlp_layer --no-use_ffcv --use_fp16 --basedataset cifar10 --mlp_outfeatures 128 --mlp_hidden_features 1024 --batchsize 1024 --epochs 1000 50 250 --criterion infonce --numworkers 20 --metric cauchy

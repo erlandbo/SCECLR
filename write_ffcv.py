@@ -7,12 +7,12 @@ from torch.utils.data import Dataset
 import os
 
 # Use FFCV
-
 parser = argparse.ArgumentParser(description='ffcv_writer')
 
 parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100"])
 
-def write_dataset(basedataset):
+
+def write_ssl_dataset(basedataset):
     train_basedataset, test_basedataset, _ , imgsize, mean, std = dataset_x(basedataset)
 
     train_basedataset = FFCVSSLImageDataset(train_basedataset)
@@ -22,7 +22,7 @@ def write_dataset(basedataset):
         os.makedirs(f'./output/{basedataset}')
 
     # Your dataset (`torch.utils.data.Dataset`) of (image, label) pairs
-    write_path_train = f'./output/{basedataset}/trainds.beton'
+    write_path_train = f'./output/{basedataset}/ssltrainds.beton'
 
     # Pass a type for each data field
     writer = DatasetWriter(write_path_train, {
@@ -36,7 +36,7 @@ def write_dataset(basedataset):
 
     ####################################
 
-    write_path_test = f'./output/{basedataset}/testds.beton'
+    write_path_test = f'./output/{basedataset}/ssltestds.beton'
     # Pass a type for each data field
     writer = DatasetWriter(write_path_test, {
         # Tune options to optimize dataset size, throughput at train-time
@@ -60,10 +60,42 @@ class FFCVSSLImageDataset(Dataset):
         return len(self.dataset)
 
 
+def write_nonssl_dataset(basedataset):
+    train_basedataset, test_basedataset, _ , imgsize, mean, std = dataset_x(basedataset)
+
+    if not os.path.exists(f'./output/{basedataset}'):
+        os.makedirs(f'./output/{basedataset}')
+
+    # Your dataset (`torch.utils.data.Dataset`) of (image, label) pairs
+    write_path_train = f'./output/{basedataset}/trainds.beton'
+
+    # Pass a type for each data field
+    writer = DatasetWriter(write_path_train, {
+        # Tune options to optimize dataset size, throughput at train-time
+        'image': RGBImageField(max_resolution=max(imgsize)),
+        'label': IntField(),
+    })
+    # Write dataset
+    writer.from_indexed_dataset(train_basedataset)
+
+    ####################################
+
+    write_path_test = f'./output/{basedataset}/testds.beton'
+    # Pass a type for each data field
+    writer = DatasetWriter(write_path_test, {
+        # Tune options to optimize dataset size, throughput at train-time
+        'image': RGBImageField(max_resolution=max(imgsize)),
+        'label': IntField(),
+    })
+    # Write dataset
+    writer.from_indexed_dataset(test_basedataset)
+
+
 def main():
     args = parser.parse_args()
 
-    write_dataset(args.basedataset)
+    write_ssl_dataset(args.basedataset)
+    write_nonssl_dataset(args.basedataset)
 
 
 if __name__ == "__main__":

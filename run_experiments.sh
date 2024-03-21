@@ -1,1 +1,2 @@
-python main.py --no-use_ffcv --use_fp16 --basedataset cifar10 --mlp_outfeatures 256 --mlp_hidden_features 2048 --batchsize 512 --rho 0.1 --epochs 1001 0 0 --criterion sceclrv2 --alpha 0.01 --numworkers 20 --metric cosine --s_init 1.0
+python main.py --no-norm_mlp_layer --no-use_ffcv --no-use_fp16 --basedataset cifar10 --mlp_outfeatures 128 --mlp_hidden_features 1024 --batchsize 1024 --rho 0.99999 --epochs 1000 50 250 --criterion sceclrv1 --alpha 0.25 --numworkers 20 --metric cauchy --s_init 2.0
+python main.py --no-norm_mlp_layer --use_ffcv --use_fp16 --basedataset cifar100 --mlp_outfeatures 128 --mlp_hidden_features 1024 --batchsize 1024 --rho 0.1 --epochs 1000 50 250 --criterion sceclrv2 --alpha 0.01 --numworkers 20 --metric cauchy --s_init 1.0

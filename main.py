@@ -1,7 +1,8 @@
 import torch
 from torch.utils.data import DataLoader
 import argparse
-
+import math
+import sys
 from data_utils import dataset_x
 from data import Augmentation, SSLImageDataset
 from models import ResSCECLR, change_model
@@ -13,6 +14,8 @@ from logger_utils import initialize_logger
 from optimization import auto_lr, build_optimizer, build_optimizer_epoch
 from criterions.criterion_utils import change_criterion
 import time
+
+from torch.profiler import profile, record_function, ProfilerActivity
 
 parser = argparse.ArgumentParser(description='iCLR')
 
@@ -27,11 +30,10 @@ parser.add_argument('--mlp_outfeatures', default=2, type=int, help='Latent space
 parser.add_argument('--norm_layer', default=True, action=argparse.BooleanOptionalAction, help='whether to use batch-normalization every layers')
 parser.add_argument('--norm_mlp_layer', default=True, action=argparse.BooleanOptionalAction, help='whether to use batch-normalization last mlp layer')
 parser.add_argument('--hidden_mlp', default=True, action=argparse.BooleanOptionalAction, help='One or none MLP hidden layers')
-parser.add_argument('--device', default='cuda', type=str, choices=["cuda", "cpu"])
+parser.add_argument('--device', default='cuda:0', type=str, choices=["cuda:0", "cpu"])
 
 # Hyperparameters and optimization parameters
 parser.add_argument('--batchsize', default=512, type=int)
-parser.add_argument('--eval_epoch', default=10, type=int, help='interval for evaluation epoch')
 parser.add_argument('--lr', nargs=3, default=(None, None, None), type=float, help='Automatically set from batchsize if None')
 parser.add_argument('--momentum', default=0.9, type=float)
 parser.add_argument('--weight_decay', default=5e-4, type=float)
@@ -53,6 +55,7 @@ parser.add_argument('--s_init', default=2.0, type=float)
 parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100"])
 parser.add_argument('--imgsize', nargs=2, default=(32, 32), type=int)
 
+parser.add_argument('--checkpoint_interval', default=100, type=int, help='interval for saving checkpoint')
 parser.add_argument('--use_ffcv', default=False, action=argparse.BooleanOptionalAction)
 parser.add_argument('--use_fp16', default=False, action=argparse.BooleanOptionalAction)
 
@@ -67,6 +70,7 @@ parser.add_argument('--change_metric', default=None, type=str, choices=["cauchy"
 parser.add_argument('--change_rho', default=None, type=float, help='Set constant rho, or automatically from batchsize -1')
 parser.add_argument('--change_alpha', default=None, type=float)
 
+
 def main():
     args = parser.parse_args()
 
@@ -79,18 +83,11 @@ def main():
     if not args.use_ffcv:
         train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
         train_dataset = SSLImageDataset(train_basedataset, train_augmentation)
-
-        trainloader = DataLoader(train_dataset,batch_size=args.batchsize,shuffle=True,num_workers=args.numworkers,pin_memory=True)
-
-        # memory_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
-        # test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
-        # memory_dataset.transform = test_dataset.transform = test_augmentation
-        # memory_loader = DataLoader(memory_dataset, batch_size=args.batchsize, shuffle=True, pin_memory=True)
-        # testloader = DataLoader(test_dataset, batch_size=args.batchsize, shuffle=False, pin_memory=True)
+        trainloader = DataLoader(train_dataset,batch_size=args.batchsize,shuffle=True,num_workers=args.numworkers,pin_memory=True, drop_last=False)
     else:
         from ffcv_ssl import build_ffcv_sslloader
         trainloader = build_ffcv_sslloader(
-            write_path=f"output/{args.basedataset}/trainds.beton",
+            write_path=f"output/{args.basedataset}/ssltrainds.beton",
             mean=mean,
             std=std,
             imgsize=imgsize,
@@ -98,25 +95,6 @@ def main():
             numworkers=args.numworkers,
             mode="train"
         )
-        # memory_loader = build_ffcv_nonsslloader(
-        #     write_path=f"output/{args.basedataset}/trainds.beton",
-        #     mean=mean,
-        #     std=std,
-        #     imgsize=imgsize,
-        #     batchsize=args.batchsize,
-        #     numworkers=args.numworkers,
-        #     mode="train"
-        # )
-        # testloader = build_ffcv_nonsslloader(
-        #     write_path=f"output/{args.basedataset}/testds.beton",
-        #     mean=mean,
-        #     std=std,
-        #     imgsize=imgsize,
-        #     batchsize=args.batchsize,
-        #     numworkers=args.numworkers,
-        #     mode="test"
-        # )
-
     if args.criterion == "sce":
         criterion = SCELoss(
             metric=args.metric,
@@ -185,40 +163,56 @@ def main():
                 param_group['lr'] = lr_schedule[epoch]
 
             running_loss = 0.0
+
             for batch_idx, batch in enumerate(trainloader):
+
+                optimizer.zero_grad()
+
                 x1, target, idx, x2 = batch
-                x = torch.cat([x1, x2], dim=0).cuda(non_blocking=True)
+                x = torch.cat([x1, x2], dim=0).cuda()
+
                 if scaler is None:
                     z, _ = model(x)
-                    optimizer.zero_grad()
                     loss = criterion(z, idx)
                     loss.backward()
                     optimizer.step()
-                    running_loss += loss.item()
                 else:
-                    with torch.autocast(device_type='cuda', dtype=torch.float16):
+                    with torch.cuda.amp.autocast(args.use_fp16):
                         z, _ = model(x)
                         loss = criterion(z, idx)
 
                     scaler.scale(loss).backward()
                     scaler.step(optimizer)
                     scaler.update()
-                    running_loss += loss.item()
 
-            epoch_loss =  running_loss / len(trainloader)
+                running_loss += loss.item()
+
+                if not math.isfinite(loss.item()):
+                    print("Break training infinity value in loss", force=True)
+                    sys.exit(1)
+
+            epoch_loss = running_loss / len(trainloader)
 
             stats = {"loss": epoch_loss, "lr": lr_schedule[epoch]}
-
-            log_str = f'Stage:{stage} Epoch:{epoch} LR:{lr_schedule[epoch]} Loss:{epoch_loss} Epoch completed:{time.time() - start_time_epoch} seconds'
+            log_str = f'Time:{time.time() - start_time_epoch}seconds Stage:{stage} Epoch:{epoch} LR:{lr_schedule[epoch]} Loss:{epoch_loss}'
             logger.info(log_str)
-
             print(log_str)
+
+            if epoch % args.checkpoint_interval == 0:
+                torch.save({
+                    "model_state_dict": model.state_dict(),
+                    "criterion_state_dict": criterion.state_dict(),
+                    "scaler": scaler.state_dict() if scaler is not None else None,
+                    "epoch": epoch
+                }, args.exppath + "/checkpoint_stage_{}.pth".format(stage))
 
         print("Completed training stage {} Time {} Training took {} seconds".format(stage, time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime()), time.time()-start_time_training))
 
         torch.save({
             "model_state_dict": model.state_dict(),
             "criterion_state_dict": criterion.state_dict(),
+            "scaler": scaler.state_dict() if scaler is not None else None,
+            "epoch": args.epochs[stage]
         }, args.exppath + "/checkpoint_stage_{}.pth".format(stage))
 
 

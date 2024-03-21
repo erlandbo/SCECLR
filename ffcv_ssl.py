@@ -22,8 +22,9 @@ import torch
 from ffcv.pipeline.allocation_query import AllocationQuery
 from ffcv.pipeline.operation import Operation
 from ffcv.pipeline.state import State
-
+import torchvision
 # From https://github.com/berenslab/t-simcne/blob/master/tsimcne/ffcv_augmentation.py
+
 
 class DivideImageBy255(Operation):
     def __init__(self, dtype: torch.dtype):
@@ -53,25 +54,31 @@ class DivideImageBy255(Operation):
 # https://github.com/facebookresearch/FFCV-SSL/blob/main/examples/test_ffcv_augmentations_ssl.py
 # and find examples
 def build_ffcv_sslloader(write_path, imgsize, mean, std, batchsize, numworkers, mode="train"):
-    MEAN = np.array(mean) * 255
-    STD = np.array(std) * 255
+    # MEAN = np.array(mean)
+    # STD = np.array(std)
     image_pipeline1 = [
         ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.2, 1)),
-        ffcv.transforms.RandomGrayscale(seed=0),
+        ffcv.transforms.RandomHorizontalFlip(flip_prob=0.5),
+        ffcv.transforms.RandomColorJitter(jitter_prob=0.8,brightness=0.4,contrast=0.4,saturation=0.4,hue=0.1),
+        ffcv.transforms.RandomGrayscale(gray_prob=0.2),
         ffcv.transforms.ToTensor(),
-        ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
-        ffcv.transforms.ToTorchImage(),
-        ffcv.transforms.NormalizeImage(MEAN, STD, np.float32),
+        #ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
+        ffcv.transforms.ToTorchImage(convert_back_int16=False),
+        #ffcv.transforms.NormalizeImage(MEAN, STD, np.float32),
         DivideImageBy255(torch.float32),
+        torchvision.transforms.Normalize(mean, std)
     ]
     image_pipeline2 = [
         ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.2, 1)),
-        ffcv.transforms.RandomGrayscale(seed=0),
+        ffcv.transforms.RandomHorizontalFlip(flip_prob=0.5),
+        ffcv.transforms.RandomColorJitter(jitter_prob=0.8, brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
+        ffcv.transforms.RandomGrayscale(gray_prob=0.2),
         ffcv.transforms.ToTensor(),
-        ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
-        ffcv.transforms.ToTorchImage(),
-        ffcv.transforms.NormalizeImage(MEAN, STD, np.float32),
+        #ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
+        ffcv.transforms.ToTorchImage(convert_back_int16=False),
+        # ffcv.transforms.NormalizeImage(MEAN, STD, np.float32),
         DivideImageBy255(torch.float32),
+        torchvision.transforms.Normalize(mean, std)
     ]
 
     label_pipeline = [
@@ -99,33 +106,27 @@ def build_ffcv_sslloader(write_path, imgsize, mean, std, batchsize, numworkers, 
         # We need this custom mapper to map the additional pipeline to
         # the label used in the dataset (image in this case)
         custom_field_mapper={"image2": "image"},
-        order=OrderOption.RANDOM if mode == 'train' else OrderOption.SEQUENTIAL,
+        order=ffcv.loader.OrderOption.QUASI_RANDOM if mode == 'train' else OrderOption.SEQUENTIAL,
+        drop_last=False,
+        os_cache=False,
     )
     return loader
 
 
 def build_ffcv_nonsslloader(write_path, imgsize, mean, std, batchsize, numworkers, mode="train"):
-    MEAN = np.array(mean) * 255
-    STD = np.array(std) * 255
     image_pipeline1 = [
-        ffcv.transforms.RandomResizedCrop(imgsize, scale=(0.2, 1)),
-        ffcv.transforms.RandomGrayscale(seed=0),
+        ffcv.fields.rgb_image.SimpleRGBImageDecoder(),
         ffcv.transforms.ToTensor(),
-        ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
-        ffcv.transforms.ToTorchImage(),
-        ffcv.transforms.NormalizeImage(MEAN, STD, np.float32),
+        #ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
+        ffcv.transforms.ToTorchImage(convert_back_int16=False),
         DivideImageBy255(torch.float32),
+        torchvision.transforms.Normalize(mean, std)
     ]
 
     label_pipeline = [
         IntDecoder(),
         ffcv.transforms.ToTensor(),
-        T.Squeeze()
-    ]
-
-    idx_pipeline = [
-        IntDecoder(),
-        ffcv.transforms.ToTensor(),
+        #ffcv.transforms.ToDevice(torch.device('cuda:0'), non_blocking=True),
         T.Squeeze()
     ]
 
@@ -135,14 +136,11 @@ def build_ffcv_nonsslloader(write_path, imgsize, mean, std, batchsize, numworker
         batch_size=batchsize,
         pipelines={
             "image": image_pipeline1,
-            #"image2": image_pipeline2,
             "label": label_pipeline,
-            "idx": idx_pipeline,
         },
-        # We need this custom mapper to map the additional pipeline to
-        # the label used in the dataset (image in this case)
-        #custom_field_mapper={"image2": "image"},
-        order=OrderOption.RANDOM if mode == 'train' else OrderOption.SEQUENTIAL,
+        order=ffcv.loader.OrderOption.QUASI_RANDOM if mode == 'train' else OrderOption.SEQUENTIAL,
+        drop_last=False,
+        os_cache=False,
     )
     return loader
 
