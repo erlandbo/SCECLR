@@ -9,7 +9,7 @@ import os
 # Use FFCV
 parser = argparse.ArgumentParser(description='ffcv_writer')
 
-parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100"])
+parser.add_argument('--basedataset', required=True, type=str, choices=["cifar10", "cifar100", "stl10_unlabeled", "stl10_labeled", "imagenette", "oxfordIIItpet"])
 
 
 def write_ssl_dataset(basedataset):
@@ -29,7 +29,7 @@ def write_ssl_dataset(basedataset):
         write_path_train,
     {
             # Tune options to optimize dataset size, throughput at train-time
-            'image': RGBImageField(), #write_mode="jpg", jpeg_quality=100,),
+            'image': RGBImageField(), #max_resolution=max(imgsize)), #write_mode="jpg", jpeg_quality=100,),
             'label': IntField(),
             'idx': IntField()
         },
@@ -44,7 +44,7 @@ def write_ssl_dataset(basedataset):
     writer = DatasetWriter(
         write_path_test,
     {
-            'image': RGBImageField(), #max_resolution=max(imgsize), write_mode="jpg", jpeg_quality=100, ),
+            'image': RGBImageField(), #,max_resolution=max(imgsize)), #, write_mode="jpg", jpeg_quality=100, ),
             'label': IntField(),
             'idx': IntField()
         },

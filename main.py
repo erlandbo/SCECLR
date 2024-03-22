@@ -53,7 +53,7 @@ parser.add_argument('--alpha', default=0.5, type=float)
 parser.add_argument('--s_init', default=2.0, type=float)
 
 # Data
-parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100"])
+parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100", "stl10_unlabeled", "stl10_labeled", "imagenette", "oxfordIIItpet"])
 
 parser.add_argument('--checkpoint_interval', default=100, type=int, help='interval for saving checkpoint')
 parser.add_argument('--use_ffcv', default=False, action=argparse.BooleanOptionalAction)

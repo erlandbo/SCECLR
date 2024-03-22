@@ -36,7 +36,7 @@ class ResNet(nn.Module):
         self.conv_1 = nn.Sequential(
             nn.Conv2d(in_channels, self.channels, kernel_size=7, stride=2, padding=3, bias=False) if first_conv else \
                 nn.Conv2d(in_channels, self.channels, kernel_size=3, stride=1, padding=1, bias=False),
-            #nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if first_maxpool else nn.MaxPool2d(kernel_size=1, stride=1),
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if first_maxpool else nn.MaxPool2d(kernel_size=1, stride=1),
             nn.BatchNorm2d(self.channels),
             nn.ReLU() if activation == "ReLU" else nn.GELU()
         )
