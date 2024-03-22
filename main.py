@@ -4,7 +4,7 @@ import argparse
 import math
 import sys
 from data_utils import dataset_x
-from data import Augmentation, SSLImageDataset
+from data import Augmentation, SSLImageDataset, Augmentationv2
 from models import ResSCECLR, change_model
 from criterions.scelosses import SCELoss
 from criterions.sceclrlossesv1_real import SCECLRV1Loss
@@ -83,7 +83,8 @@ def main():
     train_basedataset, test_basedataset, num_classes, imgsize, mean, std = dataset_x(args.basedataset)
 
     if not args.use_ffcv:
-        train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
+        #train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
+        train_augmentation = Augmentationv2(imgsize, mean, std, mode="train", num_views=2)
         train_dataset = SSLImageDataset(train_basedataset, train_augmentation)
         trainloader = DataLoader(train_dataset,batch_size=args.batchsize,shuffle=True,num_workers=args.numworkers,pin_memory=True, drop_last=False)
     else:
