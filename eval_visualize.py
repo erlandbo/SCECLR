@@ -12,11 +12,12 @@ import argparse
 from models import build_model_from_hparams
 from logger_utils import read_hyperparameters
 from eval_knn import encode_tofeatures
+from models import change_model
 
 
 def visualize_feats(X_train, y_train, X_test, y_test, num_classes, filepath_plot):
-    X = torch.cat([X_train, X_test], dim=0)
-    y = torch.cat([y_train, y_test], dim=0)
+    X = torch.cat([X_train, X_test], dim=0).cpu().numpy()
+    y = torch.cat([y_train, y_test], dim=0).cpu().numpy()
     fig, ax = plt.subplots(figsize=(20, 20))
     ax.scatter(*X.T, c=y, cmap="jet")
     fig.savefig(filepath_plot + "/2dplotfeats.png")
@@ -71,7 +72,9 @@ if __name__ == '__main__':
             mode="test"
         )
 
-    model = build_model_from_hparams(read_hyperparameters(args.hparams_path))
+    hparams = read_hyperparameters(args.hparams_path)
+    model = build_model_from_hparams(hparams)
+    model = change_model(model, projection_dim=2, device=torch.device("cuda:0"), change_layer="last")
     checkpoint = torch.load(args.checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.cuda()

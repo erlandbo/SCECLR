@@ -25,27 +25,33 @@ def write_ssl_dataset(basedataset):
     write_path_train = f'./output/{basedataset}/ssltrainds.beton'
 
     # Pass a type for each data field
-    writer = DatasetWriter(write_path_train, {
-        # Tune options to optimize dataset size, throughput at train-time
-        'image': RGBImageField(), #max_resolution=max(imgsize)),
-        'label': IntField(),
-        'idx': IntField()
-    })
-    # Write dataset
-    writer.from_indexed_dataset(train_basedataset, shuffle_indices=True)
+    writer = DatasetWriter(
+        write_path_train,
+    {
+            # Tune options to optimize dataset size, throughput at train-time
+            'image': RGBImageField(), #write_mode="jpg", jpeg_quality=100,),
+            'label': IntField(),
+            'idx': IntField()
+        },
+        num_workers=10
+    )
+    writer.from_indexed_dataset(train_basedataset, shuffle_indices=False, chunksize=1000)
 
     ####################################
 
     write_path_test = f'./output/{basedataset}/ssltestds.beton'
     # Pass a type for each data field
-    writer = DatasetWriter(write_path_test, {
-        # Tune options to optimize dataset size, throughput at train-time
-        'image': RGBImageField(), #max_resolution=max(imgsize)),
-        'label': IntField(),
-        'idx': IntField()
-    })
+    writer = DatasetWriter(
+        write_path_test,
+    {
+            'image': RGBImageField(), #max_resolution=max(imgsize), write_mode="jpg", jpeg_quality=100, ),
+            'label': IntField(),
+            'idx': IntField()
+        },
+        num_workers=10
+    )
     # Write dataset
-    writer.from_indexed_dataset(test_basedataset, shuffle_indices=True)
+    writer.from_indexed_dataset(test_basedataset, shuffle_indices=False, chunksize=1000)
 
 
 class FFCVSSLImageDataset(Dataset):

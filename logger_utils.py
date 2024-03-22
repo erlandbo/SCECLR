@@ -12,13 +12,13 @@ def initialize_logger(args):
     args.exppath = exppath
     logging.basicConfig(format='%(message)s', filename=exppath + "/train.log", level=logging.INFO)
 
-    store_hyperparameters(args)
     return logging
 
 
-def store_hyperparameters(args):
-    with open(args.exppath + "/hyperparameters.txt", "w") as f:
+def store_hyperparameters(args, tag=""):
+    with open(args.exppath + f"/hyperparameters{tag}.txt", "w") as f:
         f.write(json.dumps(vars(args)))
+
 
 def read_hyperparameters(filepath):
     with open(filepath, "r") as f:

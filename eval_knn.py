@@ -11,9 +11,10 @@ from torch.utils.data import DataLoader, ConcatDataset
 import matplotlib.pyplot as plt
 from torch.nn import functional as F
 import argparse
-from models import build_model_from_hparams
+from models import build_model_from_hparams, change_model
 from logger_utils import read_hyperparameters
 from models import ResSCECLR
+
 
 @torch.no_grad()
 def encode_tofeatures(model, dataloader, use_fp16=False):
@@ -21,14 +22,18 @@ def encode_tofeatures(model, dataloader, use_fp16=False):
     model.eval()
     for batch_idx, batch in enumerate(dataloader):
         x, target = batch
+        x = x.cuda(non_blocking=True)
+        target = target.cuda(non_blocking=True)
+        # print(target, target.dtype)
         if not use_fp16:
-            z, h = model(x.cuda())
+            z, h = model(x)
         else:
             with torch.cuda.amp.autocast(use_fp16):
-                z, h = model(x.cuda())
+                z, h = model(x)
         features.append(h)
         outs.append(z)
-        targets.append(target.cuda())
+        targets.append(target)
+
     features = torch.cat(features)
     outs = torch.cat(outs)
     targets = torch.cat(targets)
@@ -73,35 +78,95 @@ def run_knn(X_train, y_train, X_test, y_test, num_classes, k=20, fx_distance="co
         B = X_test_batch.shape[0]  # effective batchsize
 
         if fx_distance == 'cosine':
-            sim_mat = torch.matmul(X_test_batch, X_train.T)  # (B,N)
+            sim_mat = torch.mm(X_test_batch, X_train.T)  # (B,N)
+            #sim_mat = torch.matmul(X_test_batch, X_train.T)  # (B,N)
+            distances_neighbours, idx_neighbours = sim_mat.topk(k=k, dim=1)  # (B, k)
+            sim_neighbours = torch.exp(distances_neighbours / temp)
         elif fx_distance == 'euclidean':
             sim_mat = 1.0 / (torch.cdist(X_test_batch, X_train).pow(2) + eps)  # (B,N)
+            sim_neighbours, idx_neighbours = sim_mat.topk(k=k, dim=1)  # (B, k)
         else:
             raise ValueError("Invalid fx_distance", fx_distance)
-        sim_candidates, idx_candidates = sim_mat.topk(k=k, dim=1)  # (B, k)
-
-        if fx_distance == 'cosine':
-            sim_candidates = torch.exp(sim_candidates / temp)
 
         #import pdb; pdb.set_trace()
         #print(num_test_samples)
 
-        candidates_targets = torch.gather(y_train.expand(B, -1), dim=-1, index=idx_candidates)  # (N,) -> (B,N) -> (B,k)
-        cand_class_count = torch.zeros(B * k, num_classes, device=X_test_batch.device)  # (B*k, C)
-        cand_class_count = torch.scatter( cand_class_count, dim=1, index=candidates_targets.view(-1, 1), value=1.0).view(B, k, num_classes)  # (B,k,C)
+        neighbours_targets = torch.gather(y_train.expand(B, -1), dim=-1, index=idx_neighbours)  # (N,) -> (B,N) -> (B,k)
+        neighbours_one_hot = torch.zeros(B * k, num_classes, device=X_test_batch.device)  # (B*k, C)
+        class_count_neighbours = torch.scatter( neighbours_one_hot, dim=1, index=neighbours_targets.view(-1, 1), value=1.0).view(B, k, num_classes)  # (B,k,C)
         if weights == "distance":
-            y_prob = torch.sum( cand_class_count * sim_candidates.view(B, k, -1) , dim=1)  # bcast sum( (B,k,C) * (B,k,1), dim=1) -> (B,C)
+            y_prob = torch.sum( class_count_neighbours * sim_neighbours.view(B, k, -1) , dim=1)  # bcast sum( (B,k,C) * (B,k,1), dim=1) -> (B,C)
         elif weights == "uniform":
-            y_prob = torch.sum( cand_class_count, dim=1)  # bcast sum( (B,k,C) , dim=1) -> (B,C)
+            y_prob = torch.sum( class_count_neighbours, dim=1)  # bcast sum( (B,k,C) , dim=1) -> (B,C)
         else:
             raise ValueError("Invalid weights", weights)
         y_pred = torch.argmax(y_prob, dim=1)  # (B,)
         correct += torch.sum(y_pred == y_test_batch).item()
-
+        #print(y_prob.max())
     return correct / num_test_samples
 
+# DINO
+@torch.no_grad()
+def knn_classifier(train_features, train_labels, test_features, test_labels, k, T, num_classes=10, use_fp16=False):
+    if not use_fp16:
+        train_features = F.normalize(train_features, p=2, dim=1)
+        test_features = F.normalize(test_features, p=2, dim=1)
+    else:
+        with torch.cuda.amp.autocast(use_fp16):
+            train_features = F.normalize(train_features, p=2, dim=1)
+            test_features = F.normalize(test_features, p=2, dim=1)
+    top1, top5, total = 0.0, 0.0, 0
+    #train_features = train_features.t()
+    num_test_images, num_chunks = test_labels.shape[0], 100
+    imgs_per_chunk = num_test_images // num_chunks
+    retrieval_one_hot = torch.zeros(k, num_classes).to(train_features.device)
+    for idx in range(0, num_test_images, imgs_per_chunk):
+        # get the features for test images
+        features = test_features[
+            idx : min((idx + imgs_per_chunk), num_test_images), :
+        ]
+        targets = test_labels[idx : min((idx + imgs_per_chunk), num_test_images)]
+        batch_size = targets.shape[0]
 
-# Old
+        # calculate the dot product and compute top-k neighbors
+        #similarity = torch.mm(features, train_features)
+        similarity = torch.mm(features, train_features.T)
+        #import pdb; pdb.set_trace()
+        check_if_inf(similarity)
+
+        distances, indices = similarity.topk(k)
+        candidates = train_labels.view(1, -1).expand(batch_size, -1)
+        retrieved_neighbors = torch.gather(candidates, 1, indices)
+
+        retrieval_one_hot.resize_(batch_size * k, num_classes).zero_()
+        retrieval_one_hot.scatter_(1, retrieved_neighbors.view(-1, 1), 1)
+        distances_transform = distances.clone().div_(T).exp_()
+
+        check_if_inf(distances_transform)
+
+        probs = torch.sum(
+            torch.mul(
+                retrieval_one_hot.view(batch_size, -1, num_classes),
+                distances_transform.view(batch_size, -1, 1),
+            ),
+            1,
+        )
+        _, predictions = probs.sort(1, True)
+        preds = probs.argmax(dim=1)
+
+        # find the predictions that match the target
+        correct = predictions.eq(targets.data.view(-1, 1))
+        #top1 = top1 + correct.narrow(1, 0, 1).sum().item()
+        top1 += torch.sum(preds == targets).item()
+        top5 = top5 + correct.narrow(1, 0, min(5, k)).sum().item()  # top5 does not make sense if k < 5
+        total += targets.size(0)
+    top1_ = top1 / total
+    top5_ = top5 / total
+
+    #import pdb; pdb.set_trace()
+
+    return top1_, top5_
+
 def run_knn_classifier(net, train_loader, test_data_loader, num_classes, use_fp16=False):
     net.eval()
     scores = {}
@@ -110,12 +175,13 @@ def run_knn_classifier(net, train_loader, test_data_loader, num_classes, use_fp1
     with torch.no_grad():
         # generate feature bank
         for data, target in train_loader:
+            data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
             if not use_fp16:
-                out, feature = net(data.cuda())
+                out, feature = net(data)
                 out, feature = F.normalize(out, p=2, dim=1), F.normalize(feature, p=2, dim=1)
             else:
                 with torch.cuda.amp.autocast(use_fp16):
-                    out, feature = net(data.cuda())
+                    out, feature = net(data)
                     out, feature = F.normalize(out, p=2, dim=1), F.normalize(feature, p=2, dim=1)
             feature_bank.append(feature)
             feature_labels.append(target)
@@ -136,14 +202,14 @@ def run_knn_classifier(net, train_loader, test_data_loader, num_classes, use_fp1
                 total_top1, total_top5, total_num = 0.0, 0.0, 0,
 
                 for data, target in test_data_loader:
-                    data, target = data.cuda(), target.cuda()
+                    data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
                     if not use_fp16:
                         out, feature = net(data)
                         out, feature = F.normalize(out, p=2, dim=1), F.normalize(feature, p=2, dim=1)
 
                     else:
                         with torch.autocast(device_type='cuda', dtype=torch.float16):
-                            out, feature = net(data.cuda())
+                            out, feature = net(data)
                             out, feature = F.normalize(out, p=2, dim=1), F.normalize(feature, p=2, dim=1)
                     total_num += data.size(0)
                     # compute cos similarity between each feature vector and feature bank ---> [B, N]
@@ -195,7 +261,11 @@ if __name__ == '__main__':
     parser.add_argument('--use_ffcv', default=False, action=argparse.BooleanOptionalAction)
     parser.add_argument('--use_fp16', default=False, action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--use_2dfeats', default=False, action=argparse.BooleanOptionalAction)
+
     args = parser.parse_args()
+
+    torch.backends.cudnn.benchmark = True
 
     train_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
 
@@ -227,8 +297,13 @@ if __name__ == '__main__':
             mode="test"
         )
 
-    model = build_model_from_hparams(read_hyperparameters(args.hparams_path))
-    checkpoint = torch.load(args.checkpoint_path)
+    hparams = read_hyperparameters(args.hparams_path)
+    model = build_model_from_hparams(hparams)
+
+    if args.use_2dfeats:
+        model = change_model(model, projection_dim=2, device=torch.device("cuda:0"), change_layer="last")
+
+    checkpoint = torch.load(args.checkpoint_path, map_location=torch.device("cuda:0"))
     model.load_state_dict(checkpoint['model_state_dict'])
     model.cuda()
 
@@ -237,6 +312,9 @@ if __name__ == '__main__':
 
     train_features, train_outs, train_targets = encode_tofeatures(model, trainloader, use_fp16=args.use_fp16)
     test_features, test_outs, test_targets = encode_tofeatures(model, testloader, use_fp16=args.use_fp16)
+
+    top1, top5 = knn_classifier(train_features, train_targets, test_features, test_targets, k=20, T=0.5, num_classes=num_classes, use_fp16=args.use_fp16)
+    print(top1)
 
     nearest_neighbors = args.nn_ks
     temperatures = args.temp if args.fx_distance == "cosine" else [None]

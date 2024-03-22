@@ -10,12 +10,11 @@ from criterions.scelosses import SCELoss
 from criterions.sceclrlossesv1_real import SCECLRV1Loss
 from criterions.sceclrlossesv2_real import SCECLRV2Loss
 from criterions.tsimcnelosses import InfoNCELoss
-from logger_utils import initialize_logger
+from logger_utils import initialize_logger, store_hyperparameters
 from optimization import auto_lr, build_optimizer, build_optimizer_epoch
 from criterions.criterion_utils import change_criterion
 import time
-
-from torch.profiler import profile, record_function, ProfilerActivity
+import numpy as np
 
 parser = argparse.ArgumentParser(description='iCLR')
 
@@ -42,6 +41,8 @@ parser.add_argument('--epochs', nargs=3, default=(1000, 450, 250), type=int)
 parser.add_argument('--warmupepochs', nargs=3, default=(10, 0, 10), type=int)
 parser.add_argument('--numworkers', default=0, type=int)
 
+parser.add_argument('--rseed', default=None, type=int)
+
 # Loss function
 parser.add_argument('--criterion', default='sce', type=str, choices=["sce", "sceclrv1", "sceclrv2", "scempair", "infonce"])
 parser.add_argument('--metric', default="cauchy", type=str, choices=["cauchy", "heavy-tailed", "gaussian", "cosine", "dotprod"])
@@ -53,7 +54,6 @@ parser.add_argument('--s_init', default=2.0, type=float)
 
 # Data
 parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100"])
-parser.add_argument('--imgsize', nargs=2, default=(32, 32), type=int)
 
 parser.add_argument('--checkpoint_interval', default=100, type=int, help='interval for saving checkpoint')
 parser.add_argument('--use_ffcv', default=False, action=argparse.BooleanOptionalAction)
@@ -76,6 +76,8 @@ def main():
 
     logger = initialize_logger(args)
 
+    store_hyperparameters(args)
+
     device = torch.device("cuda:0")
 
     train_basedataset, test_basedataset, num_classes, imgsize, mean, std = dataset_x(args.basedataset)
@@ -95,7 +97,6 @@ def main():
             numworkers=args.numworkers,
             mode="train"
         )
-
     if args.criterion == "sce":
         criterion = SCELoss(
             metric=args.metric,
@@ -136,6 +137,12 @@ def main():
         hidden_mlp=args.hidden_mlp
     ).to(device)
 
+    torch.backends.cudnn.benchmark = True
+    if args.rseed is not None:
+        torch.cuda.manual_seed_all(args.rseed)
+        np.random.seed(args.rseed)
+        torch.manual_seed(args.rseed)
+
     for stage in range(args.start_stage, 3):
 
         if stage == 1:
@@ -170,7 +177,12 @@ def main():
                 optimizer.zero_grad()
 
                 x1, target, idx, x2 = batch
-                x = torch.cat([x1, x2], dim=0).cuda()
+
+                x1 = x1.cuda(non_blocking=True)
+                x2 = x2.cuda(non_blocking=True)
+                idx = idx.cuda(non_blocking=True)
+
+                x = torch.cat([x1, x2], dim=0)
 
                 if scaler is None:
                     z, _ = model(x)
@@ -205,7 +217,7 @@ def main():
                     "criterion_state_dict": criterion.state_dict(),
                     "scaler": scaler.state_dict() if scaler is not None else None,
                     "epoch": epoch
-                }, args.exppath + "/checkpoint_stage_{}.pth".format(stage))
+                }, args.exppath + "/checkpoint_stage_{}_epoch_{}.pth".format(stage, epoch))
 
         print("Completed training stage {} Time {} Training took {} seconds".format(stage, time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime()), time.time()-start_time_training))
 
