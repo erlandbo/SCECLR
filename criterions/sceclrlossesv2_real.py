@@ -2,7 +2,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-
+# Contrastive Learning by Stochastic Approximation with Momentum
+# CLSAM
 class SCECLRV2Loss(nn.Module):
     def __init__(self, metric, **kwargs):
         super().__init__()

@@ -119,10 +119,10 @@ def build_ffcv_sslloader(write_path, imgsize, mean, std, batchsize, numworkers, 
     return loader
 
 
-def build_ffcv_nonsslloader(write_path, imgsize, mean, std, batchsize, numworkers, augmode="train_linear", shuffle=True):
+def build_ffcv_nonsslloader(write_path, imgsize, mean, std, batchsize, numworkers, augmode="train_linear", shuffle=True, crop_ratio=None):
     if augmode == "train_linear":
         image_pipeline1 = [
-            ffcv.fields.rgb_image.RandomResizedCropRGBImageDecoder(output_size=imgsize, scale=(0.2, 1.0)),
+            ffcv.fields.rgb_image.SimpleRGBImageDecoder() if crop_ratio is None else ffcv.fields.rgb_image.CenterCropRGBImageDecoder(output_size=imgsize, ratio=crop_ratio),
             ffcv.transforms.flip.RandomHorizontalFlip(flip_prob=0.5),
             ffcv.transforms.ops.ToTensor(),
             #ToDevice(torch.device('cuda:0'), non_blocking=True),
@@ -133,7 +133,7 @@ def build_ffcv_nonsslloader(write_path, imgsize, mean, std, batchsize, numworker
         ]
     else:
         image_pipeline1 = [
-            ffcv.fields.rgb_image.SimpleRGBImageDecoder(),
+            ffcv.fields.rgb_image.SimpleRGBImageDecoder() if crop_ratio is None else ffcv.fields.rgb_image.CenterCropRGBImageDecoder(output_size=imgsize, ratio=crop_ratio),
             ffcv.transforms.ops.ToTensor(),
             #ToDevice(torch.device('cuda:0'), non_blocking=True),
             ffcv.transforms.ops.ToTorchImage(convert_back_int16=False),
@@ -148,6 +148,7 @@ def build_ffcv_nonsslloader(write_path, imgsize, mean, std, batchsize, numworker
         ffcv.transforms.common.Squeeze(1),
         #ToDevice(torch.device('cuda:0'), non_blocking=True),  # not int on gpu
     ]
+
 
     loader = ffcv.loader.Loader(
         write_path,

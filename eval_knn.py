@@ -5,8 +5,6 @@ import sys
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
-from data_utils import dataset_x
-from data import Augmentation
 from torch.utils.data import DataLoader, ConcatDataset
 import matplotlib.pyplot as plt
 from torch.nn import functional as F
@@ -14,6 +12,7 @@ import argparse
 from models import build_model_from_hparams, change_model
 from logger_utils import read_hyperparameters
 from models import ResSCECLR
+from data import builddataset_x
 
 
 @torch.no_grad()
@@ -253,7 +252,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--numworkers', default=0, type=int)
 
-    parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100"])
+    parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100", "stl10_unlabeled", "stl10_labeled", "imagenette", "oxfordIIItpet"])
 
     parser.add_argument('--hparams_path', required=True, type=str, help="path to hparams to re-construct model")
     parser.add_argument('--checkpoint_path', required=True, type=str, help="path to model weights")
@@ -267,39 +266,47 @@ if __name__ == '__main__':
 
     torch.backends.cudnn.benchmark = True
 
-    train_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
-
     if not args.use_ffcv:
-
-        test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
-        train_dataset.transform = test_dataset.transform = test_augmentation
-        trainloader = DataLoader(train_dataset, batch_size=args.batchsize, num_workers=args.numworkers,shuffle=True, pin_memory=True, drop_last=False)
-        testloader = DataLoader(test_dataset, batch_size=args.batchsize, num_workers=args.numworkers, shuffle=False, pin_memory=True, drop_last=False)
+        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_x(args.basedataset, transform_mode="test_classifier")
+        train_basedataset.transform = test_basedataset.transform = test_augmentation
+        trainloader = DataLoader(train_basedataset, batch_size=args.batchsize, shuffle=True,num_workers=args.numworkers,pin_memory=True, drop_last=False)
+        testloader = DataLoader(test_basedataset, batch_size=args.batchsize, shuffle=False,num_workers=args.numworkers,pin_memory=True, drop_last=False)
     else:
-        from ffcv_ssl import build_ffcv_nonsslloader
+        from data_ffcv_ssl import builddataset_ffcv_x
+        import ffcv
 
-        trainloader = build_ffcv_nonsslloader(
-            write_path=f"output/{args.basedataset}/trainds.beton",
-            mean=mean,
-            std=std,
-            imgsize=imgsize,
-            batchsize=args.batchsize,
-            numworkers=args.numworkers,
-            shuffle=True,
-            augmode="test"
-        )
-        testloader = build_ffcv_nonsslloader(
-            write_path=f"output/{args.basedataset}/testds.beton",
-            mean=mean,
-            std=std,
-            imgsize=imgsize,
-            batchsize=args.batchsize,
-            numworkers=args.numworkers,
-            augmode="test"
+        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="test_classifier")
+        trainloader = ffcv.loader.Loader(
+            f"output/{args.basedataset}/trainds.beton",
+            num_workers=args.numworkers,
+            batch_size=args.batchsize,
+            pipelines={
+                "image": test_augmentation.augmentations,
+                "label": [ffcv.fields.basics.IntDecoder(),ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
+            },
+                order=ffcv.loader.OrderOption.RANDOM,
+                drop_last=False,
+                os_cache=True,
+                seed=42
+            )
+        testloader = ffcv.loader.Loader(
+            f"output/{args.basedataset}/testds.beton",
+            num_workers=args.numworkers,
+            batch_size=args.batchsize,
+            pipelines={
+                "image": test_augmentation.augmentations,
+                "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
+            },
+            order=ffcv.loader.OrderOption.SEQUENTIAL,
+            drop_last=False,
+            os_cache=True,
+            seed=42
         )
 
     hparams = read_hyperparameters(args.hparams_path)
     model = build_model_from_hparams(hparams)
+
+    #print(model)
 
     if args.use_2dfeats:
         model = change_model(model, projection_dim=2, device=torch.device("cuda:0"), change_layer="last")
@@ -308,13 +315,13 @@ if __name__ == '__main__':
     model.load_state_dict(checkpoint['model_state_dict'])
     model.cuda()
 
-    scores = run_knn_classifier(model, trainloader, testloader, num_classes, use_fp16=args.use_fp16)
+    scores = run_knn_classifier(model, trainloader, testloader, NUM_CLASSES, use_fp16=args.use_fp16)
     print(scores)
 
     train_features, train_outs, train_targets = encode_tofeatures(model, trainloader, use_fp16=args.use_fp16)
     test_features, test_outs, test_targets = encode_tofeatures(model, testloader, use_fp16=args.use_fp16)
 
-    top1, top5 = knn_classifier(train_features, train_targets, test_features, test_targets, k=20, T=0.5, num_classes=num_classes, use_fp16=args.use_fp16)
+    top1, top5 = knn_classifier(train_features, train_targets, test_features, test_targets, k=20, T=0.5, num_classes=NUM_CLASSES, use_fp16=args.use_fp16)
     print(top1)
 
     nearest_neighbors = args.nn_ks
@@ -328,7 +335,7 @@ if __name__ == '__main__':
                 train_targets,
                 test_features,
                 test_targets,
-                num_classes,
+                NUM_CLASSES,
                 k=k,
                 fx_distance=args.fx_distance,
                 weights=args.weights,
@@ -344,7 +351,7 @@ if __name__ == '__main__':
                 train_targets,
                 test_outs,
                 test_targets,
-                num_classes,
+                NUM_CLASSES,
                 k=k,
                 fx_distance=args.fx_distance,
                 weights=args.weights,

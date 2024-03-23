@@ -1,0 +1,1 @@
+python write_ffcv.py --basedataset cifar100 --aug_mode non_contrastive

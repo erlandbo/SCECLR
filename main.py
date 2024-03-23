@@ -3,8 +3,7 @@ from torch.utils.data import DataLoader
 import argparse
 import math
 import sys
-from data_utils import dataset_x
-from data import Augmentation, SSLImageDataset, Augmentationv2
+from data import SSLImageDataset, builddataset_x
 from models import ResSCECLR, change_model
 from criterions.scelosses import SCELoss
 from criterions.sceclrlossesv1_real import SCECLRV1Loss
@@ -57,10 +56,10 @@ parser.add_argument('--s_init', default=2.0, type=float)
 
 # Data
 parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100", "stl10_unlabeled", "stl10_labeled", "imagenette", "oxfordIIItpet"])
-parser.add_argument('--gaus_blur', default=False, action=argparse.BooleanOptionalAction)
 
 
 parser.add_argument('--checkpoint_interval', default=100, type=int, help='interval for saving checkpoint')
+
 parser.add_argument('--use_ffcv', default=False, action=argparse.BooleanOptionalAction)
 parser.add_argument('--use_fp16', default=False, action=argparse.BooleanOptionalAction)
 
@@ -85,25 +84,31 @@ def main():
 
     device = torch.device("cuda:0")
 
-    train_basedataset, test_basedataset, num_classes, imgsize, mean, std = dataset_x(args.basedataset)
-
     if not args.use_ffcv:
-        # train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
-        train_augmentation = Augmentationv2(imgsize, mean, std, mode="train", num_views=2, gaus_blur=args.gaus_blur)
-        train_dataset = SSLImageDataset(train_basedataset, train_augmentation)
-        trainloader = DataLoader(train_dataset,batch_size=args.batchsize,shuffle=True,num_workers=args.numworkers,pin_memory=True, drop_last=False)
+        train_basedataset, val_basedataset, contrastive_augmentation, NUM_CLASSES = builddataset_x(args.basedataset, transform_mode="contrastive_pretrain")
+        train_dataset = SSLImageDataset(train_basedataset, contrastive_augmentation)
+        trainloader = DataLoader(train_dataset, batch_size=args.batchsize, shuffle=True,num_workers=args.numworkers,pin_memory=True, drop_last=False)
     else:
-        from ffcv_ssl import build_ffcv_sslloader
-        trainloader = build_ffcv_sslloader(
-            write_path=f"output/{args.basedataset}/ssltrainds.beton",
-            mean=mean,
-            std=std,
-            imgsize=imgsize,
-            batchsize=args.batchsize,
-            numworkers=args.numworkers,
-            shuffle=True,
-            gaus_blur=args.gaus_blur
-        )
+        from data_ffcv_ssl import builddataset_ffcv_x
+        import ffcv
+        train_basedataset, val_basedataset, contrastive_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="contrastive_pretrain")
+        trainloader = ffcv.loader.Loader(
+            f"output/{args.basedataset}/ssltrainds.beton",
+            num_workers=args.numworkers,
+            batch_size=args.batchsize,
+            pipelines={
+                "image": contrastive_augmentation.augmentations,
+                "image2": contrastive_augmentation.augmentations,
+                "label": [ffcv.fields.basics.IntDecoder(),ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
+                "idx": [ffcv.fields.basics.IntDecoder(),ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
+            },
+                custom_field_mapper={"image2": "image"},
+                order=ffcv.loader.OrderOption.RANDOM,
+                drop_last=False,
+                os_cache=True,
+                seed=42
+            )
+
     if args.criterion == "sce":
         criterion = SCELoss(
             metric=args.metric,
@@ -147,6 +152,7 @@ def main():
     ).to(device)
 
     torch.backends.cudnn.benchmark = True
+
     if args.rseed is not None:
         torch.cuda.manual_seed_all(args.rseed)
         np.random.seed(args.rseed)
@@ -192,6 +198,8 @@ def main():
                 idx = idx.cuda(non_blocking=True)
 
                 x = torch.cat([x1, x2], dim=0)
+
+                #print(x.shape)
 
                 if scaler is None:
                     z, _ = model(x)
