@@ -2,7 +2,6 @@ from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 from torchvision.transforms import v2
 
-
 class SSLImageDataset(Dataset):
     def __init__(self, dataset, transform):
         self.dataset = dataset
@@ -68,7 +67,9 @@ class Augmentationv2():
                  jitter_strength=0.5,
                  min_scale_crops=0.2,
                  max_scale_crops=1.0,
-                 num_views = 1
+                 num_views = 1,
+                 gaus_blur=False,
+                 solarization=False
                  ):
         self.num_views = num_views
         if mode == "train" or mode=="eval":
@@ -89,6 +90,8 @@ class Augmentationv2():
                 )], p=0.8),
                 v2.RandomGrayscale(p=0.2)
             ]
+            if gaus_blur:
+                augmentations += [v2.RandomApply([v2.GaussianBlur(kernel_size=int(0.1 * imgsize[0]))], p=0.5)]
 
         augmentations += [
             v2.ToTensor(),

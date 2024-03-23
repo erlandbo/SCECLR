@@ -31,6 +31,9 @@ parser.add_argument('--norm_mlp_layer', default=True, action=argparse.BooleanOpt
 parser.add_argument('--hidden_mlp', default=True, action=argparse.BooleanOptionalAction, help='One or none MLP hidden layers')
 parser.add_argument('--device', default='cuda:0', type=str, choices=["cuda:0", "cpu"])
 
+parser.add_argument('--first_conv', default=False, action=argparse.BooleanOptionalAction, help='whether to use batch-normalization last mlp layer')
+parser.add_argument('--first_maxpool', default=False, action=argparse.BooleanOptionalAction, help='whether to use batch-normalization last mlp layer')
+
 # Hyperparameters and optimization parameters
 parser.add_argument('--batchsize', default=512, type=int)
 parser.add_argument('--lr', nargs=3, default=(None, None, None), type=float, help='Automatically set from batchsize if None')
@@ -54,6 +57,8 @@ parser.add_argument('--s_init', default=2.0, type=float)
 
 # Data
 parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100", "stl10_unlabeled", "stl10_labeled", "imagenette", "oxfordIIItpet"])
+parser.add_argument('--gaus_blur', default=False, action=argparse.BooleanOptionalAction)
+
 
 parser.add_argument('--checkpoint_interval', default=100, type=int, help='interval for saving checkpoint')
 parser.add_argument('--use_ffcv', default=False, action=argparse.BooleanOptionalAction)
@@ -83,8 +88,8 @@ def main():
     train_basedataset, test_basedataset, num_classes, imgsize, mean, std = dataset_x(args.basedataset)
 
     if not args.use_ffcv:
-        #train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
-        train_augmentation = Augmentationv2(imgsize, mean, std, mode="train", num_views=2)
+        # train_augmentation = Augmentation(imgsize, mean, std, mode="train", num_views=2)
+        train_augmentation = Augmentationv2(imgsize, mean, std, mode="train", num_views=2, gaus_blur=args.gaus_blur)
         train_dataset = SSLImageDataset(train_basedataset, train_augmentation)
         trainloader = DataLoader(train_dataset,batch_size=args.batchsize,shuffle=True,num_workers=args.numworkers,pin_memory=True, drop_last=False)
     else:
@@ -96,7 +101,8 @@ def main():
             imgsize=imgsize,
             batchsize=args.batchsize,
             numworkers=args.numworkers,
-            mode="train"
+            shuffle=True,
+            gaus_blur=args.gaus_blur
         )
     if args.criterion == "sce":
         criterion = SCELoss(
@@ -135,7 +141,9 @@ def main():
         mlp_hidden_features=args.mlp_hidden_features,
         mlp_outfeatures=args.mlp_outfeatures,
         norm_mlp_layer=args.norm_mlp_layer,
-        hidden_mlp=args.hidden_mlp
+        hidden_mlp=args.hidden_mlp,
+        first_conv=args.first_conv,
+        first_maxpool=args.first_maxpool,
     ).to(device)
 
     torch.backends.cudnn.benchmark = True

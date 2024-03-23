@@ -92,56 +92,12 @@ class CauchyLoss(SCECLRBase):
 
         # Repulsion
         s_inv_hat = self.s_inv[feats_idx].unsqueeze(1) / self.N.pow(1)
-        moment = 0.9
+        momentum = self.N.pow(1) / (self.N.pow(1) + self.omega) if self.rho < 0 else self.rho
+
         pos_const = qii.unsqueeze(1).detach().clone().requires_grad_(False)  # detach() from computation graph
 
-        repulsive_forces_1 = torch.log( ((torch.mean(qij, dim=1, keepdim=True) + pos_const) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
-        repulsive_forces_2 = torch.log( ((torch.mean(qji, dim=1, keepdim=True) + pos_const) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
-        repulsive_forces = ( repulsive_forces_1.mean() + repulsive_forces_2.mean() ) / 2.0
-
-        loss = attractive_forces + repulsive_forces
-
-        self.update_s(qii, qij, qji, feats_idx)
-
-        return loss
-
-
-class GaussianLoss(SCECLRBase):
-    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=1.0):
-        super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
-        var = 1.0
-        self.gamma = 1.0 / (2.0 * var)
-
-    def forward(self, feats, feats_idx):
-        B = feats.shape[0] // 2
-        feats_u, feats_v = feats[:B], feats[B:]
-
-        q_uv = torch.exp( -torch.cdist(feats_u, feats_v, p=2).pow(2) * self.gamma )  # (B,E),(B,E) -> (B,B)
-        q_uu = torch.exp( -torch.cdist(feats_u, feats_u, p=2).pow(2) * self.gamma )  # (B,E),(B,E) -> (B,B)
-        q_vv = torch.exp( -torch.cdist(feats_v, feats_v, p=2).pow(2) * self.gamma )  # (B,E),(B,E) -> (B,B)
-
-        self_mask = torch.eye(B, device=feats.device, dtype=torch.bool)
-
-        qii = torch.diag(q_uv.clone())
-
-        q_uv.masked_fill(self_mask, 0.0)  # Pos mask
-
-        q_uu.masked_fill(self_mask, 0.0)
-        q_vv.masked_fill(self_mask, 0.0)
-
-        qij = torch.cat([q_uu, q_uv], dim=1)   # (B,B), (B,B) -> (B, 2B)
-        qji = torch.cat([q_uv.T, q_vv], dim=1)  # (B,B), (B,B) -> (B, 2B)
-
-        # Attraction
-        attractive_forces = - torch.log(qii).mean()
-
-        # Repulsion
-        s_inv_hat = self.s_inv[feats_idx].unsqueeze(1) / self.N.pow(1)
-        moment = 0.9
-        pos_const = qii.unsqueeze(1).detach().clone().requires_grad_(False)  # detach() from computation graph
-
-        repulsive_forces_1 = torch.log( ((torch.mean(qij, dim=1, keepdim=True) + pos_const) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
-        repulsive_forces_2 = torch.log( ((torch.mean(qji, dim=1, keepdim=True) + pos_const) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
+        repulsive_forces_1 = torch.log( ((torch.mean(qij, dim=1, keepdim=True) + pos_const) * (1.0-momentum) + momentum * s_inv_hat) * 2*B ) * 1.0 / (1.0 - momentum)
+        repulsive_forces_2 = torch.log( ((torch.mean(qji, dim=1, keepdim=True) + pos_const) * (1.0-momentum) + momentum * s_inv_hat) * 2*B ) * 1.0 / (1.0 - momentum)
         repulsive_forces = ( repulsive_forces_1.mean() + repulsive_forces_2.mean() ) / 2.0
 
         loss = attractive_forces + repulsive_forces
@@ -209,6 +165,54 @@ class CosineLoss(SCECLRBase):
         #import pdb; pdb.set_trace()
 
         return loss
+
+
+class GaussianLoss(SCECLRBase):
+    def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=1.0):
+        super().__init__(N=N, rho=rho, alpha=alpha, S_init=S_init)
+        var = 1.0
+        self.gamma = 1.0 / (2.0 * var)
+
+    def forward(self, feats, feats_idx):
+        B = feats.shape[0] // 2
+        feats_u, feats_v = feats[:B], feats[B:]
+
+        q_uv = torch.exp( -torch.cdist(feats_u, feats_v, p=2).pow(2) * self.gamma )  # (B,E),(B,E) -> (B,B)
+        q_uu = torch.exp( -torch.cdist(feats_u, feats_u, p=2).pow(2) * self.gamma )  # (B,E),(B,E) -> (B,B)
+        q_vv = torch.exp( -torch.cdist(feats_v, feats_v, p=2).pow(2) * self.gamma )  # (B,E),(B,E) -> (B,B)
+
+        self_mask = torch.eye(B, device=feats.device, dtype=torch.bool)
+
+        qii = torch.diag(q_uv.clone())
+
+        q_uv.masked_fill(self_mask, 0.0)  # Pos mask
+
+        q_uu.masked_fill(self_mask, 0.0)
+        q_vv.masked_fill(self_mask, 0.0)
+
+        qij = torch.cat([q_uu, q_uv], dim=1)   # (B,B), (B,B) -> (B, 2B)
+        qji = torch.cat([q_uv.T, q_vv], dim=1)  # (B,B), (B,B) -> (B, 2B)
+
+        # Attraction
+        attractive_forces = - torch.log(qii).mean()
+
+        # Repulsion
+        s_inv_hat = self.s_inv[feats_idx].unsqueeze(1) / self.N.pow(1)
+        moment = 0.9
+        pos_const = qii.unsqueeze(1).detach().clone().requires_grad_(False)  # detach() from computation graph
+
+        repulsive_forces_1 = torch.log( ((torch.mean(qij, dim=1, keepdim=True) + pos_const) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
+        repulsive_forces_2 = torch.log( ((torch.mean(qji, dim=1, keepdim=True) + pos_const) * moment + (1.0 - moment) * s_inv_hat) * 2*B ) * 1.0 / moment
+        repulsive_forces = ( repulsive_forces_1.mean() + repulsive_forces_2.mean() ) / 2.0
+
+        loss = attractive_forces + repulsive_forces
+
+        self.update_s(qii, qij, qji, feats_idx)
+
+        return loss
+
+
+
 
 class CosineLoss2(SCECLRBase):
     def __init__(self, N=60_000, rho=-1, alpha=0.5, S_init=1.0):

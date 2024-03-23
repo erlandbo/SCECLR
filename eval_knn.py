@@ -285,7 +285,8 @@ if __name__ == '__main__':
             imgsize=imgsize,
             batchsize=args.batchsize,
             numworkers=args.numworkers,
-            mode="train"
+            shuffle=True,
+            augmode="test"
         )
         testloader = build_ffcv_nonsslloader(
             write_path=f"output/{args.basedataset}/testds.beton",
@@ -294,7 +295,7 @@ if __name__ == '__main__':
             imgsize=imgsize,
             batchsize=args.batchsize,
             numworkers=args.numworkers,
-            mode="test"
+            augmode="test"
         )
 
     hparams = read_hyperparameters(args.hparams_path)

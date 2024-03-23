@@ -36,9 +36,9 @@ class ResNet(nn.Module):
         self.conv_1 = nn.Sequential(
             nn.Conv2d(in_channels, self.channels, kernel_size=7, stride=2, padding=3, bias=False) if first_conv else \
                 nn.Conv2d(in_channels, self.channels, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if first_maxpool else nn.MaxPool2d(kernel_size=1, stride=1),
             nn.BatchNorm2d(self.channels),
-            nn.ReLU() if activation == "ReLU" else nn.GELU()
+            nn.ReLU() if activation == "ReLU" else nn.GELU(),
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if first_maxpool else nn.Identity(),
         )
         self.conv_2 = self.build_layer(block, layers[0], stride=1, activation=activation, channels=64) 
         self.conv_3 = self.build_layer(block, layers[1], stride=2, activation=activation, channels=128) 
@@ -157,7 +157,9 @@ class ResSCECLR(nn.Module):
                  mlp_hidden_features=1024,
                  mlp_outfeatures=128,
                  norm_mlp_layer=True,
-                 hidden_mlp=True
+                 hidden_mlp=True,
+                 first_conv=False,
+                 first_maxpool=False
                  ):
         super().__init__()
         resnet, mlp_in_features = resnet_x(
@@ -165,6 +167,8 @@ class ResSCECLR(nn.Module):
             in_channels=in_channels,
             activation=activation,
             zero_init_residual=zero_init_residual,
+            first_conv=first_conv,
+            first_maxpool=first_maxpool
         )
         self.mixer = resnet
         self.qprojector = QProjector(

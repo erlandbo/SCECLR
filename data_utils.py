@@ -1,5 +1,5 @@
 import torch
-from torchvision.datasets import CIFAR10, CIFAR100, STL10, Imagenette, CelebA, OxfordIIITPet, Flowers102
+from torchvision.datasets import CIFAR10, CIFAR100, STL10, Imagenette, ImageNet, CelebA, OxfordIIITPet, Flowers102, Food101
 
 
 def dataset_x(dataset_name, transform=None, download=True):
@@ -45,8 +45,17 @@ def dataset_x(dataset_name, transform=None, download=True):
             Imagenette(root='./data', download=False, split="val", size="160px"),
             10,
             (160, 160),
-            (0.5071, 0.4867, 0.4408),
-            (0.2675, 0.2565, 0.2761)
+            [0.485, 0.456, 0.406],
+            [0.229, 0.224, 0.225]
+        )
+    elif dataset_name == 'imagenet':
+        return (  # https://github.com/kumarkrishna/fastssl/blob/main/fastssl/data/imagenet_dataloaders.py
+            ImageNet(root='./data', download=False, split="train"),
+            ImageNet(root='./data', download=False, split="val"),
+            1000,
+            (224, 224),
+            [0.485, 0.456, 0.406],
+            [0.229, 0.224, 0.225]
         )
     elif dataset_name == 'oxfordIIItpet':
         return ( # https://albumentations.ai/docs/examples/pytorch_semantic_segmentation/
@@ -61,10 +70,28 @@ def dataset_x(dataset_name, transform=None, download=True):
         return (  # https://albumentations.ai/docs/examples/pytorch_semantic_segmentation/
             Flowers102(root='./data', download=download, split="train"),
             Flowers102(root='./data', download=download, split="test"),
-            37,
+            102,
             (160, 160),
             [0.485, 0.456, 0.406],
             [0.229, 0.224, 0.225]
+        ),
+    elif dataset_name == 'food101':
+        return (  # https://albumentations.ai/docs/examples/pytorch_semantic_segmentation/
+            Food101(root='./data', download=download, split="train"),
+            Food101(root='./data', download=download, split="test"),
+            101,
+            (224, 224),
+            [0.485, 0.456, 0.406],
+            [0.229, 0.224, 0.225]
+        ),
+    elif dataset_name == "celeba":  #( # https://github.com/Lightning-Universe/lightning-bolts/blob/master/src/pl_bolts/datasets/kitti_dataset.py
+        return (
+            CelebA(root='./data', download=download, split='train', target_type="identity"),
+            CelebA(root='./data', download=download, split='test', target_type="identity"),
+            10_177,
+            (128, 128),
+            [0.4467, 0.4398, 0.4066],
+            [0.2242, 0.2215, 0.2239]
         ),
         # "svhn": (
         #     SVHN(root='./data', download=download, split="train", size="160px"),
@@ -74,14 +101,7 @@ def dataset_x(dataset_name, transform=None, download=True):
         #     (0.5071, 0.4867, 0.4408),
         #     (0.2675, 0.2565, 0.2761)
         # )
-        # "celeba": ( # https://github.com/Lightning-Universe/lightning-bolts/blob/master/src/pl_bolts/datasets/kitti_dataset.py
-        #     CelebA(root='./data', download=download, split='train', target_type="identity"),
-        #     CelebA(root='./data', download=download, split='test', target_type="identity"),
-        #     10,
-        #     (96, 96),
-        #     [0.4467, 0.4398, 0.4066],
-        #     [0.2242, 0.2215, 0.2239]
-        # ),
+
 
     # assert dataset_name in datasets.keys(), "Invalid dataset name"
     # return datasets[dataset_name]

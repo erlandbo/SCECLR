@@ -113,7 +113,8 @@ if __name__ == '__main__':
             imgsize=imgsize,
             batchsize=args.batchsize,
             numworkers=args.numworkers,
-            mode="train"
+            shuffle=True,
+            augmode="train_linear"
         )
         testloader = build_ffcv_nonsslloader(
             write_path=f"output/{args.basedataset}/testds.beton",
@@ -122,7 +123,8 @@ if __name__ == '__main__':
             imgsize=imgsize,
             batchsize=args.batchsize,
             numworkers=args.numworkers,
-            mode="test"
+            shuffle=False,
+            augmode="test"
         )
     hparams = read_hyperparameters(args.hparams_path)
     backbone_model = build_model_from_hparams(hparams)
