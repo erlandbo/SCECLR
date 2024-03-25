@@ -4,18 +4,23 @@ import argparse
 import math
 import sys
 from data import SSLImageDataset, builddataset_x
-from models import ResSCECLR, change_model
+from models import ResProjModel, change_model
 from criterions.scelosses import SCELoss
-from criterions.sceclrlossesv1_real import SCECLRV1Loss
-from criterions.sceclrlossesv2_real import SCECLRV2Loss
+from criterions.clsav1global import CLSAv1Loss
+from criterions.clsav2 import CLSAv2Loss
+from criterions.clsav2NoPos import CLSAv2NoPosLoss
+from criterions.clsav2global import CLSAv2GlobalLoss
+from criterions.clbn import CLSAv3Loss
+from criterions.clbnglobal import CLSAv3GlobalLoss
 from criterions.tsimcnelosses import InfoNCELoss
+from criterions.sogclr import SogCLR
 from logger_utils import initialize_logger, store_hyperparameters
 from optimization import auto_lr, build_optimizer, build_optimizer_epoch
-from criterions.criterion_utils import change_criterion
 import time
 import numpy as np
 
-parser = argparse.ArgumentParser(description='iCLR')
+
+parser = argparse.ArgumentParser(description='CLSA')
 
 # Model parameters
 # ResNet
@@ -46,8 +51,8 @@ parser.add_argument('--numworkers', default=0, type=int)
 parser.add_argument('--rseed', default=None, type=int)
 
 # Loss function
-parser.add_argument('--criterion', default='sce', type=str, choices=["sce", "sceclrv1", "sceclrv2", "scempair", "infonce"])
-parser.add_argument('--metric', default="cauchy", type=str, choices=["cauchy", "heavy-tailed", "gaussian", "cosine", "dotprod"])
+parser.add_argument('--criterion', default='sce', type=str, choices=["clsav1", "clsav2","clsav2nopos", "clsav2global","clsav3", "clsav3global", "sce", "infonce", "sogclr"])
+parser.add_argument('--metric', default="cauchy", type=str, choices=["cauchy", "gaussian", "cosine"])
 
 # SCE and SCECLR
 parser.add_argument('--rho', default=-1., type=float, help='Set constant rho, or automatically from batchsize -1')
@@ -117,16 +122,48 @@ def main():
             alpha=args.alpha,
             S_init=args.s_init,
         ).to(device)
-    if args.criterion == "sceclrv1":
-        criterion = SCECLRV1Loss(
+    elif args.criterion == "clsav1":
+        criterion = CLSAv1Loss(
             metric=args.metric,
             N=len(train_basedataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
         ).to(device)
-    elif args.criterion == "sceclrv2":
-        criterion = SCECLRV2Loss(
+    elif args.criterion == "clsav2":
+        criterion = CLSAv2Loss(
+            metric=args.metric,
+            N=len(train_basedataset),
+            rho=args.rho,
+            alpha=args.alpha,
+            S_init=args.s_init,
+        ).to(device)
+    elif args.criterion == "clsav2nopos":
+        criterion = CLSAv2NoPosLoss(
+            metric=args.metric,
+            N=len(train_basedataset),
+            rho=args.rho,
+            alpha=args.alpha,
+            S_init=args.s_init,
+        ).to(device)
+    elif args.criterion == "clsav2global":
+        criterion = CLSAv2GlobalLoss(
+            metric=args.metric,
+            N=len(train_basedataset),
+            rho=args.rho,
+            alpha=args.alpha,
+            S_init=args.s_init,
+        ).to(device)
+    elif args.criterion == "clsav3":
+        criterion = CLSAv3Loss(
+            metric=args.metric,
+            N=len(train_basedataset),
+            rho=args.rho,
+            alpha=args.alpha,
+            S_init=args.s_init,
+        ).to(device)
+    elif args.criterion == "clsav3global":
+        criterion = CLSAv3GlobalLoss(
             metric=args.metric,
             N=len(train_basedataset),
             rho=args.rho,
@@ -137,8 +174,12 @@ def main():
         criterion = InfoNCELoss(
             metric=args.metric
         ).to(device)
+    elif args.criterion == "sogclr":
+        criterion = SogCLR(
+            N=len(train_basedataset),
+        ).to(device)
 
-    model = ResSCECLR(
+    model = ResProjModel(
         backbone_depth=args.backbone_depth,
         in_channels=args.in_channels,
         activation=args.activation,

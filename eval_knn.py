@@ -11,7 +11,7 @@ from torch.nn import functional as F
 import argparse
 from models import build_model_from_hparams, change_model
 from logger_utils import read_hyperparameters
-from models import ResSCECLR
+from models import ResProjModel
 from data import builddataset_x
 
 

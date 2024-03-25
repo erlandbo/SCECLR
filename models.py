@@ -148,7 +148,7 @@ class QProjector(nn.Module):
         )
 
 
-class ResSCECLR(nn.Module):
+class ResProjModel(nn.Module):
     def __init__(self,
                  backbone_depth,
                  in_channels=3,
@@ -213,18 +213,16 @@ def change_model(model, device, projection_dim=2, freeze_layer=None, change_laye
 
 
 def build_model_from_hparams(hparams):
-    valid_hparams =  list(inspect.signature(ResSCECLR).parameters.keys())
+    valid_hparams =  list(inspect.signature(ResProjModel).parameters.keys())
     hparams = {name: value for name, value in hparams.items() if name in valid_hparams}
     #print(hparams)
-    return ResSCECLR(**hparams)
+    return ResProjModel(**hparams)
 
 
 if __name__ == "__main__":
     x = torch.rand((2, 3, 28, 28))
-    res = ResSCECLR(backbone_depth=34)
+    res = ResProjModel(backbone_depth=34)
     print(res)
     y1, y2 = res(x)
     print(y1.shape, y2.shape)
 
-    
-        
