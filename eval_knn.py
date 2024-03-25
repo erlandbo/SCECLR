@@ -39,6 +39,7 @@ def encode_tofeatures(model, dataloader, use_fp16=False):
 
     #check_if_inf(features)
     #check_if_inf(outs)
+    #print(targets.shape)
 
     return features, outs, targets
 

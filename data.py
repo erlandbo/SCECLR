@@ -199,6 +199,7 @@ class GaussianBlur(object):
             )
         )
 
+
 def builddataset_x(dataset_name, download=False, transform_mode="contrastive_pretrain"):
     if dataset_name == 'cifar10':
         CIFAR10_IMGSIZE = (32, 32)

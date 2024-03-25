@@ -118,7 +118,7 @@ def write_nonssl_dataset(args):
         num_workers=args.num_workers
     )
     writer.from_indexed_dataset(
-        train_basedataset,
+        test_basedataset,
         shuffle_indices=False,
         chunksize=args.chunksize
     )
