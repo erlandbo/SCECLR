@@ -1,1 +1,1 @@
-python write_ffcv.py --basedataset cifar100 --aug_mode non_contrastive
+python write_ffcv.py --basedataset food101 --aug_mode contrastive --chunksize 1000

@@ -10,7 +10,8 @@ from criterions.clsav1global import CLSAv1Loss
 from criterions.clsav2 import CLSAv2Loss
 from criterions.clsav2NoPos import CLSAv2NoPosLoss
 from criterions.clsav2global import CLSAv2GlobalLoss
-from criterions.clbn import CLSAv3Loss
+from criterions.clsav4 import CLSAv4Loss
+from criterions.clsav4NoPos import CLSAv4NoPosLoss
 from criterions.clbnglobal import CLSAv3GlobalLoss
 from criterions.tsimcnelosses import InfoNCELoss
 from criterions.sogclr import SogCLR
@@ -51,7 +52,7 @@ parser.add_argument('--numworkers', default=0, type=int)
 parser.add_argument('--rseed', default=None, type=int)
 
 # Loss function
-parser.add_argument('--criterion', default='sce', type=str, choices=["clsav1", "clsav2","clsav2nopos", "clsav2global","clsav3", "clsav3global", "sce", "infonce", "sogclr"])
+parser.add_argument('--criterion', default='sce', type=str, choices=["clsav1", "clsav2","clsav2nopos", "clsav2global","clsav4", "clsav4NoPos", "sce", "infonce", "sogclr"])
 parser.add_argument('--metric', default="cauchy", type=str, choices=["cauchy", "gaussian", "cosine"])
 
 # SCE and SCECLR
@@ -154,16 +155,16 @@ def main():
             alpha=args.alpha,
             S_init=args.s_init,
         ).to(device)
-    elif args.criterion == "clsav3":
-        criterion = CLSAv3Loss(
+    elif args.criterion == "clsav4":
+        criterion = CLSAv4Loss(
             metric=args.metric,
             N=len(train_basedataset),
             rho=args.rho,
             alpha=args.alpha,
             S_init=args.s_init,
         ).to(device)
-    elif args.criterion == "clsav3global":
-        criterion = CLSAv3GlobalLoss(
+    elif args.criterion == "clsav4NoPos":
+        criterion = CLSAv4NoPosLoss(
             metric=args.metric,
             N=len(train_basedataset),
             rho=args.rho,

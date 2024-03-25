@@ -3,7 +3,7 @@ import torch
 import math
 import sys
 from data_utils import dataset_x
-from data import Augmentation
+from data import builddataset_x
 from torch.utils.data import DataLoader, ConcatDataset
 import argparse
 from models import build_model_from_hparams, change_model
@@ -97,35 +97,49 @@ if __name__ == '__main__':
 
     torch.backends.cudnn.benchmark = True
 
-    train_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
-
     if not args.use_ffcv:
-        test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
-        train_dataset.transform = test_dataset.transform = test_augmentation
-        trainloader = DataLoader(train_dataset, batch_size=args.batchsize, num_workers=args.numworkers,shuffle=True, pin_memory=True, drop_last=False)
-        testloader = DataLoader(test_dataset, batch_size=args.batchsize, num_workers=args.numworkers, shuffle=False, pin_memory=True, drop_last=False)
+        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_x(args.basedataset,
+                                                                                             transform_mode="test_classifier")
+        train_basedataset.transform = test_basedataset.transform = test_augmentation
+        trainloader = DataLoader(train_basedataset, batch_size=args.batchsize, shuffle=True,
+                                 num_workers=args.numworkers, pin_memory=True, drop_last=False)
+        testloader = DataLoader(test_basedataset, batch_size=args.batchsize, shuffle=False, num_workers=args.numworkers,
+                                pin_memory=True, drop_last=False)
     else:
-        from ffcv_ssl import build_ffcv_nonsslloader
-        trainloader = build_ffcv_nonsslloader(
-            write_path=f"output/{args.basedataset}/trainds.beton",
-            mean=mean,
-            std=std,
-            imgsize=imgsize,
-            batchsize=args.batchsize,
-            numworkers=args.numworkers,
-            shuffle=True,
-            augmode="train_linear"
+        from data_ffcv_ssl import builddataset_ffcv_x
+        import ffcv
+
+        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset,
+                                                                                                  transform_mode="test_classifier")
+        trainloader = ffcv.loader.Loader(
+            f"output/{args.basedataset}/trainds.beton",
+            num_workers=args.numworkers,
+            batch_size=args.batchsize,
+            pipelines={
+                "image": test_augmentation.augmentations,
+                "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),
+                          ffcv.transforms.common.Squeeze(1)],
+            },
+            order=ffcv.loader.OrderOption.RANDOM,
+            drop_last=False,
+            os_cache=True,
+            seed=42
         )
-        testloader = build_ffcv_nonsslloader(
-            write_path=f"output/{args.basedataset}/testds.beton",
-            mean=mean,
-            std=std,
-            imgsize=imgsize,
-            batchsize=args.batchsize,
-            numworkers=args.numworkers,
-            shuffle=False,
-            augmode="test"
+        testloader = ffcv.loader.Loader(
+            f"output/{args.basedataset}/testds.beton",
+            num_workers=args.numworkers,
+            batch_size=args.batchsize,
+            pipelines={
+                "image": test_augmentation.augmentations,
+                "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),
+                          ffcv.transforms.common.Squeeze(1)],
+            },
+            order=ffcv.loader.OrderOption.SEQUENTIAL,
+            drop_last=False,
+            os_cache=True,
+            seed=42
         )
+
     hparams = read_hyperparameters(args.hparams_path)
     backbone_model = build_model_from_hparams(hparams)
 

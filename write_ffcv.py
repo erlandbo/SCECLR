@@ -8,7 +8,7 @@ import os
 # Use FFCV
 parser = argparse.ArgumentParser(description='ffcv_writer')
 
-parser.add_argument('--basedataset', required=True, type=str, choices=["cifar10", "cifar100", "stl10_unlabeled", "stl10_labeled", "imagenette", "oxfordIIItpet"])
+parser.add_argument('--basedataset', required=True, type=str, choices=["cifar10", "cifar100", "stl10_unlabeled", "stl10_labeled", "imagenette", "oxfordIIItpet", "food101"])
 
 parser.add_argument('--aug_mode', default="contrastive", type=str, choices=["contrastive", "non_contrastive"])
 parser.add_argument('--write_mode', default="raw", type=str, choices=["raw", "smart", "jpg", "proportion"])
