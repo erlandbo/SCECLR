@@ -83,7 +83,7 @@ class CauchyLoss(CLSABase):
 
         # Attraction
         qii = q[pos_mask].clone()
-        attractive_forces = - torch.log(qii).mean()
+        attractive_forces = - torch.log(qii)
 
         # Repulsion
         momentum = self.N.pow(1) / (self.N.pow(1) + self.omega) if self.rho < 0 else self.rho
@@ -93,7 +93,7 @@ class CauchyLoss(CLSABase):
 
         repulsive_forces = torch.log( (1-momentum) * Z_i + momentum * Z_hat ) * 1.0 / (1.0 - momentum)
 
-        loss = attractive_forces + repulsive_forces
+        loss = attractive_forces.mean() + repulsive_forces.mean()
 
         self.update_s(qii[0:B], q[0:B], q[B:], feats_idx)
 

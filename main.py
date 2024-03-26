@@ -97,14 +97,14 @@ def main():
     else:
         from data_ffcv_ssl import builddataset_ffcv_x
         import ffcv
-        train_basedataset, val_basedataset, contrastive_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="contrastive_pretrain")
+        train_basedataset, val_basedataset, contrastive_augmentation1, contrastive_augmentation2, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="contrastive_pretrain")
         trainloader = ffcv.loader.Loader(
             f"output/{args.basedataset}/ssltrainds.beton",
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": contrastive_augmentation.augmentations,
-                "image2": contrastive_augmentation.augmentations,
+                "image": contrastive_augmentation1.augmentations,
+                "image2": contrastive_augmentation2.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(),ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
                 "idx": [ffcv.fields.basics.IntDecoder(),ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
             },

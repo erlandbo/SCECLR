@@ -3,8 +3,7 @@ import torch
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
-from data_utils import dataset_x
-from data import Augmentation
+from data import builddataset_x
 from torch.utils.data import DataLoader, ConcatDataset
 import matplotlib.pyplot as plt
 from torch.nn import functional as F
@@ -42,34 +41,48 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    train_dataset, test_dataset, num_classes , imgsize, mean, std = dataset_x(args.basedataset)
 
     if not args.use_ffcv:
-
-        test_augmentation = Augmentation(imgsize, mean, std, mode="test", num_views=1)
-        train_dataset.transform = test_dataset.transform = test_augmentation
-        trainloader = DataLoader(train_dataset, batch_size=args.batchsize, num_workers=args.numworkers,shuffle=True, pin_memory=True, drop_last=False)
-        testloader = DataLoader(test_dataset, batch_size=args.batchsize, num_workers=args.numworkers, shuffle=False, pin_memory=True, drop_last=False)
+        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_x(args.basedataset,
+                                                                                             transform_mode="test_classifier")
+        train_basedataset.transform = test_basedataset.transform = test_augmentation
+        trainloader = DataLoader(train_basedataset, batch_size=args.batchsize, shuffle=True,
+                                 num_workers=args.numworkers, pin_memory=True, drop_last=False)
+        testloader = DataLoader(test_basedataset, batch_size=args.batchsize, shuffle=False, num_workers=args.numworkers,
+                                pin_memory=True, drop_last=False)
     else:
-        from ffcv_ssl import build_ffcv_nonsslloader
+        from data_ffcv_ssl import builddataset_ffcv_x
+        import ffcv
 
-        trainloader = build_ffcv_nonsslloader(
-            write_path=f"output/{args.basedataset}/trainds.beton",
-            mean=mean,
-            std=std,
-            imgsize=imgsize,
-            batchsize=args.batchsize,
-            numworkers=args.numworkers,
-            mode="train"
+        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset,
+                                                                                                  transform_mode="test_classifier")
+        trainloader = ffcv.loader.Loader(
+            f"output/{args.basedataset}/trainds.beton",
+            num_workers=args.numworkers,
+            batch_size=args.batchsize,
+            pipelines={
+                "image": test_augmentation.augmentations,
+                "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),
+                          ffcv.transforms.common.Squeeze(1)],
+            },
+            order=ffcv.loader.OrderOption.RANDOM,
+            drop_last=False,
+            os_cache=True,
+            seed=42
         )
-        testloader = build_ffcv_nonsslloader(
-            write_path=f"output/{args.basedataset}/testds.beton",
-            mean=mean,
-            std=std,
-            imgsize=imgsize,
-            batchsize=args.batchsize,
-            numworkers=args.numworkers,
-            mode="test"
+        testloader = ffcv.loader.Loader(
+            f"output/{args.basedataset}/testds.beton",
+            num_workers=args.numworkers,
+            batch_size=args.batchsize,
+            pipelines={
+                "image": test_augmentation.augmentations,
+                "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),
+                          ffcv.transforms.common.Squeeze(1)],
+            },
+            order=ffcv.loader.OrderOption.SEQUENTIAL,
+            drop_last=False,
+            os_cache=True,
+            seed=42
         )
 
     hparams = read_hyperparameters(args.hparams_path)
@@ -82,5 +95,5 @@ if __name__ == '__main__':
     train_features, train_outs, train_targets = encode_tofeatures(model, trainloader,use_fp16=args.use_fp16)
     test_features, test_outs, test_targets = encode_tofeatures(model, testloader, use_fp16=args.use_fp16)
 
-    visualize_feats(train_outs, train_targets, test_outs, test_targets, num_classes, args.filepath_plot)
+    visualize_feats(train_outs, train_targets, test_outs, test_targets, NUM_CLASSES, args.filepath_plot)
 

@@ -272,17 +272,20 @@ if __name__ == '__main__':
         train_basedataset.transform = test_basedataset.transform = test_augmentation
         trainloader = DataLoader(train_basedataset, batch_size=args.batchsize, shuffle=True,num_workers=args.numworkers,pin_memory=True, drop_last=False)
         testloader = DataLoader(test_basedataset, batch_size=args.batchsize, shuffle=False,num_workers=args.numworkers,pin_memory=True, drop_last=False)
+
+        # print(test_augmentation)
+
     else:
         from data_ffcv_ssl import builddataset_ffcv_x
         import ffcv
 
-        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="test_classifier")
+        train_basedataset, test_basedataset, test_augmentation1, test_augmentation2 , NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="test_classifier")
         trainloader = ffcv.loader.Loader(
             f"output/{args.basedataset}/trainds.beton",
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": test_augmentation.augmentations,
+                "image": test_augmentation1.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(),ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
             },
                 order=ffcv.loader.OrderOption.RANDOM,
@@ -295,7 +298,7 @@ if __name__ == '__main__':
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": test_augmentation.augmentations,
+                "image": test_augmentation2.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
             },
             order=ffcv.loader.OrderOption.SEQUENTIAL,
@@ -306,11 +309,14 @@ if __name__ == '__main__':
 
     hparams = read_hyperparameters(args.hparams_path)
     model = build_model_from_hparams(hparams)
+    #print(hparams)
 
     #print(model)
 
+
     if args.use_2dfeats:
         model = change_model(model, projection_dim=2, device=torch.device("cuda:0"), change_layer="last")
+        print("change to 2D feats")
 
     checkpoint = torch.load(args.checkpoint_path, map_location=torch.device("cuda:0"))
     model.load_state_dict(checkpoint['model_state_dict'])

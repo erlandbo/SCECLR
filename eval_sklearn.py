@@ -101,6 +101,8 @@ if __name__ == '__main__':
 
     if args.use_2dfeats:
         model = change_model(model, projection_dim=2, device=torch.device("cuda:0"), change_layer="last")
+        print("change to 2D feats")
+
 
     checkpoint = torch.load(args.checkpoint_path, map_location=torch.device("cuda:0"))
     model.load_state_dict(checkpoint['model_state_dict'])
@@ -108,6 +110,9 @@ if __name__ == '__main__':
 
     train_features, train_outs, train_targets = encode_tofeatures(model, trainloader, use_fp16=args.use_fp16)
     test_features, test_outs, test_targets = encode_tofeatures(model, testloader, use_fp16=args.use_fp16)
+
+    train_features, train_outs, train_targets = train_features.cpu().numpy(), train_outs.cpu().numpy(), train_targets.cpu().numpy()
+    test_features, test_outs, test_targets = test_features.cpu().numpy(), test_outs.cpu().numpy(), test_targets.cpu().numpy()
 
     knn_acc_feats = knn_classifier(train_features, test_features, train_targets, test_targets, k=args.nn_k)
     knn_acc_outs = knn_classifier(train_outs, test_outs, train_targets, test_targets, k=args.nn_k)

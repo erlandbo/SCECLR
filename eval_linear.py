@@ -74,13 +74,13 @@ if __name__ == '__main__':
 
     # Hyperparameters and optimization parameters
     parser.add_argument('--batchsize', default=512, type=int)
-    parser.add_argument('--base_lr', default=None, type=float,help='Automatically set from batchsize if None')
+    parser.add_argument('--base_lr', default=0.1, type=float,help='Automatically set from batchsize if None')
 
     parser.add_argument('--momentum', default=0.9, type=float)
     parser.add_argument('--weight_decay', default=0.0, type=float)
     parser.add_argument('--lr_anneal', default="cosine_anneal", choices=["cosine_anneal", "linear_anneal"])
     parser.add_argument('--epochs', default=250, type=int)
-    parser.add_argument('--warmupepochs', default=10, type=int)
+    parser.add_argument('--warmupepochs', default=0, type=int)
     parser.add_argument('--numworkers', default=0, type=int)
 
     parser.add_argument('--basedataset', default='cifar10', type=str, choices=["cifar10", "cifar100"])
@@ -109,14 +109,14 @@ if __name__ == '__main__':
         from data_ffcv_ssl import builddataset_ffcv_x
         import ffcv
 
-        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset,
-                                                                                                  transform_mode="test_classifier")
+        train_basedataset, _, train_augmentation1, _, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="train_classifier")
+        _, test_basedataset, test_augmentation1, _, NUM_CLASSES = builddataset_ffcv_x(args.basedataset,transform_mode="test_classifier")
         trainloader = ffcv.loader.Loader(
             f"output/{args.basedataset}/trainds.beton",
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": test_augmentation.augmentations,
+                "image": train_augmentation1.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),
                           ffcv.transforms.common.Squeeze(1)],
             },
@@ -130,7 +130,7 @@ if __name__ == '__main__':
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": test_augmentation.augmentations,
+                "image": test_augmentation1.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),
                           ffcv.transforms.common.Squeeze(1)],
             },
@@ -145,6 +145,8 @@ if __name__ == '__main__':
 
     if args.use_2dfeats:
         backbone_model = change_model(backbone_model, projection_dim=2, device=torch.device("cuda:0"), change_layer="last")
+        print("change to 2D feats")
+
 
     checkpoint = torch.load(args.checkpoint_path)
     backbone_model.load_state_dict(checkpoint['model_state_dict'])
@@ -157,13 +159,17 @@ if __name__ == '__main__':
     print(backbone_model)
 
     in_features = backbone_model.qprojector.mlp[-1].weight.shape[1]
-    linear_classifier = LinearClassifier(in_features=in_features, out_features=num_classes)
+    linear_classifier = LinearClassifier(in_features=in_features, out_features=NUM_CLASSES)
+    linear_classifier.linear.weight.data.normal_(mean=0.0, std=0.01)
+    linear_classifier.linear.bias.data.zero_()
 
     linear_classifier.train()
 
     print(linear_classifier)
 
-    base_lr = auto_lr(args.batchsize) if args.base_lr is None else args.base_lr
+    #base_lr = auto_lr(args.batchsize) if args.base_lr is None else args.base_lr
+
+    base_lr = args.base_lr * args.batchsize / 256
 
     optimizer, lr_schedule = build_optimizer_epoch(linear_classifier, base_lr, args.warmupepochs, args.epochs,args.lr_anneal, args.momentum, args.weight_decay)
 

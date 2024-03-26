@@ -166,6 +166,7 @@ def builddataset_ffcv_x(dataset_name, download=False, transform_mode="contrastiv
             CIFAR10(root='./data', download=download, train=True),
             CIFAR10(root='./data', download=download, train=False),
             CIFARFFCVAugmentations(imgsize=CIFAR10_IMGSIZE, mean=CIFAR10_MEAN, std=CIFAR10_STD, mode=transform_mode),
+            CIFARFFCVAugmentations(imgsize=CIFAR10_IMGSIZE, mean=CIFAR10_MEAN, std=CIFAR10_STD, mode=transform_mode),
             NUM_CLASSES
         )
     elif dataset_name == 'cifar100':
@@ -176,6 +177,7 @@ def builddataset_ffcv_x(dataset_name, download=False, transform_mode="contrastiv
         return (
             CIFAR100(root='./data', download=download, train=True),
             CIFAR100(root='./data', download=download, train=False),
+            CIFARFFCVAugmentations(imgsize=CIFAR100_IMGSIZE, mean=CIFAR100_MEAN, std=CIFAR100_STD, mode=transform_mode),
             CIFARFFCVAugmentations(imgsize=CIFAR100_IMGSIZE, mean=CIFAR100_MEAN, std=CIFAR100_STD, mode=transform_mode),
             NUM_CLASSES
         )

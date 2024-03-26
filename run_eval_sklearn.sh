@@ -1,0 +1,1 @@
+python eval_sklearn.py --batchsize 1024 --fx_distance cosine --use_ffcv --use_fp16 --basedataset cifar100 --checkpoint_path logs/2024_03_25_16_06_19_cifar100_clsav4NoPos_cauchy_batch1024_feature128/checkpoint_stage_0.pth --hparams_path logs/2024_03_25_16_06_19_cifar100_clsav4NoPos_cauchy_batch1024_feature128/hyperparameters.txt

@@ -65,6 +65,7 @@ class ResNet(nn.Module):
             for modl in self.modules():
                 if isinstance(modl, ResBlock) and modl.bn2.weight is not None:
                     nn.init.constant_(modl.bn2.weight, 0)  # type: ignore[arg-type]
+                    print("zero-init-residual")
         ##################################################
     
     def build_layer(self, block, count_layers, stride, activation, channels):
