@@ -54,14 +54,14 @@ if __name__ == '__main__':
         from data_ffcv_ssl import builddataset_ffcv_x
         import ffcv
 
-        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset,
+        train_basedataset, test_basedataset, test_augmentation1, test_augmentation2, NUM_CLASSES = builddataset_ffcv_x(args.basedataset,
                                                                                                   transform_mode="test_classifier")
         trainloader = ffcv.loader.Loader(
             f"output/{args.basedataset}/trainds.beton",
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": test_augmentation.augmentations,
+                "image": test_augmentation1.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),
                           ffcv.transforms.common.Squeeze(1)],
             },
@@ -75,7 +75,7 @@ if __name__ == '__main__':
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": test_augmentation.augmentations,
+                "image": test_augmentation2.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),
                           ffcv.transforms.common.Squeeze(1)],
             },

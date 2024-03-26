@@ -66,13 +66,14 @@ if __name__ == '__main__':
         from data_ffcv_ssl import builddataset_ffcv_x
         import ffcv
 
-        train_basedataset, test_basedataset, test_augmentation, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="test_classifier")
+        train_basedataset, _, train_augmentation1, _, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="train_classifier")
+        _, test_basedataset, _, test_augmentation2, NUM_CLASSES = builddataset_ffcv_x(args.basedataset, transform_mode="test_classifier")
         trainloader = ffcv.loader.Loader(
             f"output/{args.basedataset}/trainds.beton",
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": test_augmentation.augmentations,
+                "image": train_augmentation1.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(),ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
             },
                 order=ffcv.loader.OrderOption.RANDOM,
@@ -85,7 +86,7 @@ if __name__ == '__main__':
             num_workers=args.numworkers,
             batch_size=args.batchsize,
             pipelines={
-                "image": test_augmentation.augmentations,
+                "image": test_augmentation2.augmentations,
                 "label": [ffcv.fields.basics.IntDecoder(), ffcv.transforms.ops.ToTensor(),ffcv.transforms.common.Squeeze(1)],
             },
             order=ffcv.loader.OrderOption.SEQUENTIAL,
@@ -114,14 +115,14 @@ if __name__ == '__main__':
     train_features, train_outs, train_targets = train_features.cpu().numpy(), train_outs.cpu().numpy(), train_targets.cpu().numpy()
     test_features, test_outs, test_targets = test_features.cpu().numpy(), test_outs.cpu().numpy(), test_targets.cpu().numpy()
 
-    knn_acc_feats = knn_classifier(train_features, test_features, train_targets, test_targets, k=args.nn_k)
-    knn_acc_outs = knn_classifier(train_outs, test_outs, train_targets, test_targets, k=args.nn_k)
+    #knn_acc_feats = knn_classifier(train_features, test_features, train_targets, test_targets, k=args.nn_k)
+    #knn_acc_outs = knn_classifier(train_outs, test_outs, train_targets, test_targets, k=args.nn_k)
 
     logreg_acc_feats = logreg_classifier(train_features, test_features, train_targets, test_targets)
     logreg_acc_outs = logreg_classifier(train_outs, test_outs, train_targets, test_targets)
 
-    print("kNN Acc features", knn_acc_feats)
-    print("kNN Acc output", knn_acc_outs)
+    #print("kNN Acc features", knn_acc_feats)
+    #print("kNN Acc output", knn_acc_outs)
 
     print("Logisitic regression Acc features", logreg_acc_feats)
     print("Logisitic regression Acc output", logreg_acc_outs)

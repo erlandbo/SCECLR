@@ -256,7 +256,7 @@ def builddataset_x(dataset_name, download=False, transform_mode="contrastive_pre
             ImageNetAugmentations(imgsize=IMAGENETTE_IMGSIZE, mean=IMAGENETTE_MEAN, std=IMAGENETTE_STD, mode=transform_mode),
             NUM_CLASSES
         )
-    elif dataset_name == 'imagenet': # https://github.com/kumarkrishna/fastssl/blob/main/fastssl/data/imagenet_dataloaders.py
+    elif dataset_name == 'imagenet':  # https://github.com/kumarkrishna/fastssl/blob/main/fastssl/data/imagenet_dataloaders.py
         IMAGENET_IMGSIZE = (224, 224)
         IMAGENET_MEAN = [0.485, 0.456, 0.406]
         IMAGENET_STD = [0.229, 0.224, 0.225]
